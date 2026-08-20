@@ -4,6 +4,7 @@ import {
   downloadSetupSnapshot,
   normalizeSetupSnapshot,
 } from "../services/setupSnapshot";
+import DataSourceMeta from "./DataSourceMeta";
 
 const scoreFactors = [
   { label: "Market Structure", maximum: 25 },
@@ -58,13 +59,8 @@ function unavailable(value) {
 }
 
 function SourceMeta({ source, updated, status = "Unavailable" }) {
-  return (
-    <div className="source-meta">
-      <span>Source: {source || "Not connected"}</span>
-      <span>Last updated: {updated || "--"}</span>
-      <span className="data-status">{status}</span>
-    </div>
-  );
+  const normalizedStatus = status.toUpperCase() === "LIVE" ? "LIVE" : status.toUpperCase() === "HISTORICAL" ? "HISTORICAL" : "UNAVAILABLE";
+  return <DataSourceMeta metadata={{ source, retrievedAt: updated, dataStatus: normalizedStatus }} className="source-meta" />;
 }
 
 function SectionHeader({ eyebrow, title, description, status, icon }) {

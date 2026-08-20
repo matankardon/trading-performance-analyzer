@@ -1,0 +1,11 @@
+export { DATA_STATUS, DATA_STATUS_LABELS, createSourceMetadata, isVerifiedData } from "./dataStatus";
+export { createDataError, createDataResponse } from "./dataErrors";
+export { validateBar, validateBars, validateRequiredFields, validateTimestamp } from "./validation";
+export { normalizeBar, normalizeHistoricalBars, normalizeQuote, normalizeNewsRecord, normalizeEconomicEvent, normalizeSentiment } from "./normalization";
+export { getQuote, getHistoricalBars } from "./marketDataService";
+export { getNews } from "./newsDataService";
+export { getEconomicEvents } from "./economicEventsService";
+export { getSentiment } from "./sentimentService";
+export { canRunRealBacktest, createBacktestInput, createDatasetIdentity } from "./backtestContracts";
+export { demoDataMetadata, demoEconomicEvents, demoExpertOpinions, demoSentimentRows } from "./demoFixtures";
+export { dataSourceRegistry, getDataProvider, registerDataProvider } from "./providers/registry";

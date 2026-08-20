@@ -8,6 +8,7 @@ import InvestingWorkspace from "./components/InvestingWorkspace";
 import DayTradingDashboard from "./components/DayTradingDashboard";
 import ScreenshotTradeWorkflow from "./components/ScreenshotTradeWorkflow";
 import StrategyLab from "./components/StrategyLab";
+import { loadStrategyLibrary, saveStrategyLibrary } from "./services/strategyModels";
 
 import "./App.css";
 
@@ -115,6 +116,10 @@ function App() {
     }
   }
 
+  function loadStrategiesForUser(user) {
+    setStrategyLibrary(loadStrategyLibrary(user?.id));
+  }
+
   useEffect(() => {
     let mounted = true;
 
@@ -150,6 +155,7 @@ function App() {
         }
 
         setCurrentUser(user);
+        loadStrategiesForUser(user);
 
         if (user) {
           await loadTradesForUser(user);
@@ -185,6 +191,7 @@ function App() {
           session?.user || null;
 
         setCurrentUser(user);
+        loadStrategiesForUser(user);
 
         if (!user) {
           setTrades([]);
@@ -211,6 +218,7 @@ function App() {
 
   async function handleAuthSuccess(user) {
     setCurrentUser(user);
+    loadStrategiesForUser(user);
     setActivePage("Overview");
 
     await loadTradesForUser(user);
@@ -242,6 +250,7 @@ function App() {
 
     setCurrentUser(null);
     setTrades([]);
+    setStrategyLibrary([]);
     setSelectedTrade(null);
     setShowTradeForm(false);
   }
@@ -2072,7 +2081,6 @@ function App() {
       { page: "Chart", label: "Chart", icon: "CH" },
       { page: "Strategy", label: "Strategy", icon: "SY" },
       { page: "Strategy Lab", label: "Strategy Lab", icon: "SL" },
-      { page: "Backtesting", label: "Backtesting", icon: "BT" },
       { page: "Events & News", label: "Events & News", icon: "EV" },
       { page: "Sentiment", label: "Sentiment", icon: "SN" },
       { page: "Trades", label: "Trades", icon: "TR" },
@@ -2289,11 +2297,11 @@ function App() {
           )}
 
         {isDayTrading && activePage === "Strategy Lab" && (
-          <StrategyLab initialView="library" strategies={strategyLibrary} onStrategiesChange={setStrategyLibrary} />
+          <StrategyLab initialView="library" strategies={strategyLibrary} onStrategiesChange={(nextStrategies) => { setStrategyLibrary(nextStrategies); saveStrategyLibrary(currentUser?.id, nextStrategies); }} />
         )}
 
         {isDayTrading && activePage === "Backtesting" && (
-          <StrategyLab initialView="backtesting" strategies={strategyLibrary} onStrategiesChange={setStrategyLibrary} />
+          <StrategyLab initialView="backtesting" strategies={strategyLibrary} onStrategiesChange={(nextStrategies) => { setStrategyLibrary(nextStrategies); saveStrategyLibrary(currentUser?.id, nextStrategies); }} />
         )}
 
         {activePage ===
