@@ -1,0 +1,55 @@
+:root {
+  --font-ui: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --terminal-bg: #080d15;
+  --terminal-bg-soft: #0d1420;
+  --terminal-surface: #111a27;
+  --terminal-surface-raised: #162131;
+  --terminal-border: #243246;
+  --terminal-border-soft: #1b293a;
+  --terminal-text: #e6edf5;
+  --terminal-muted: #8d9bae;
+  --terminal-faint: #607083;
+  --terminal-blue: #72a8db;
+  --terminal-cyan: #65c4c4;
+  --terminal-green: #6ab487;
+  --terminal-red: #cf777e;
+  --terminal-amber: #caa15f;
+  --terminal-shadow: 0 18px 45px rgba(0, 0, 0, 0.22);
+
+  font-family: var(--font-ui);
+  color: var(--terminal-text);
+  background: var(--terminal-bg);
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html,
+body,
+#root {
+  min-width: 320px;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow-x: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--terminal-cyan);
+  outline-offset: 2px;
+}
