@@ -43,7 +43,7 @@
 }
 
 .analytics-behavior-section {
-  border-top: 2px solid #9a91db;
+  border-top: 2px solid var(--color-investing);
 }
 
 .analytics-insights-section {
@@ -134,7 +134,7 @@
   gap: 7px;
   padding: 14px;
   border: 1px solid var(--line-soft);
-  border-top: 2px solid #3b5874;
+  border-top: 2px solid var(--color-trading);
   background: rgba(10, 18, 29, 0.65);
 }
 
@@ -245,7 +245,7 @@
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
-  background: #1b2938;
+  background: var(--color-bg-elevated);
 }
 
 .comparison-bar span,
@@ -259,7 +259,7 @@
 .bar-positive,
 .behavior-bar span,
 .compliance-track span {
-  background: linear-gradient(90deg, #4d91c6, var(--terminal-cyan));
+  background: linear-gradient(90deg, var(--color-trading), var(--terminal-cyan));
 }
 
 .bar-negative {
