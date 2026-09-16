@@ -43,9 +43,9 @@
 
 .strategy-lab-tabs button:hover,
 .strategy-lab-tabs button.active {
-  border-color: #456b8f;
+  border-color: var(--color-trading);
   background: rgba(114, 168, 219, 0.1);
-  color: var(--ink);
+  color: #FFFFFF;
 }
 
 .strategy-lab-section {
@@ -87,14 +87,14 @@
   border: 1px solid rgba(101, 196, 196, 0.45);
   border-radius: 5px;
   padding: 10px 13px;
-  background: #174c64;
-  color: #dff8f7;
+  background: var(--color-trading);
+  color: #FFFFFF;
   font-size: 12px;
   font-weight: 700;
 }
 
 .strategy-primary-action:hover:not(:disabled) {
-  background: #20647e;
+  background: var(--color-trading);
 }
 
 .strategy-primary-action:disabled {
@@ -114,7 +114,7 @@
   align-items: center;
   width: 100%;
   border: 1px solid var(--line-soft);
-  border-left: 2px solid #426786;
+  border-left: 2px solid var(--color-trading);
   padding: 15px;
   background: rgba(8, 16, 26, 0.56);
   color: var(--ink-soft);
@@ -150,7 +150,7 @@
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 5px 8px;
-  color: #9bc8cf;
+  color: #FFFFFF;
   background: rgba(101, 196, 196, 0.08);
   font-size: 9px;
   font-weight: 800;
@@ -176,7 +176,7 @@
   width: 43px;
   height: 43px;
   place-items: center;
-  border: 1px solid #35536d;
+  border: 1px solid var(--color-trading);
   border-radius: 8px;
   color: var(--terminal-cyan);
   font-family: var(--font-mono);
@@ -195,7 +195,7 @@
 }
 
 .strategy-builder-section {
-  border-top-color: #9a91db;
+  border-top-color: var(--color-investing);
 }
 
 .strategy-builder-grid {
@@ -352,7 +352,7 @@
 
 .backtest-result-labels span {
   padding: 12px;
-  border-left: 2px solid #3b5874;
+  border-left: 2px solid var(--color-trading);
   color: var(--ink-faint);
   background: rgba(13, 23, 36, 0.66);
   font-size: 10px;

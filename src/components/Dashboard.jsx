@@ -312,8 +312,8 @@ function Dashboard({ trades = [], loadingTrades = false, onAddTrade }) {
                   <Area
                     type="monotone"
                     dataKey="pnl"
-                    stroke="#111827"
-                    fill="#e9edf2"
+                    stroke="var(--color-trading)"
+                    fill="var(--color-bg-elevated)"
                     strokeWidth={2}
                   />
                 </AreaChart>

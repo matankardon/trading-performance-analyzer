@@ -1,5 +1,18 @@
 # React + Vite
 
+## Screenshot storage setup
+
+Apply the migration in `supabase/migrations/20260915000000_trade_screenshot_metadata.sql` with `supabase db push` after linking this project. It adds the nullable `trades.screenshot_path` and `trades.ai_extraction` columns, creates the private `trade-screenshots` bucket, and adds authenticated storage policies that restrict every object to the first path segment matching `auth.uid()`.
+
+If applying migrations is not available, create the bucket manually in the Supabase dashboard:
+
+1. Open **Storage** and choose **New bucket**.
+2. Name it `trade-screenshots`.
+3. Keep **Public bucket** disabled.
+4. Apply the four storage policies from the migration SQL, plus the two `trades` columns, before using screenshot-created trades.
+
+The app uploads screenshot files as `{user_id}/{trade_id}.{extension}` and only displays them through five-minute signed URLs. Existing manually entered trades remain valid with null screenshot metadata.
+
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
 Currently, two official plugins are available:
