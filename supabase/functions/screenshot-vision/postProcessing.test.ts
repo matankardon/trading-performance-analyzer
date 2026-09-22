@@ -3,6 +3,7 @@ import {
   calculateRiskReward,
   deriveDirection,
   deriveExit,
+  extractNumericValue,
   getExtractionWarning,
   isValidExtraction,
   mergeExtractions,
@@ -89,6 +90,9 @@ describe("screenshot vision post-processing", () => {
   });
 
   it("parses comma-formatted levels and preserves model direction when levels are missing", () => {
+    expect(extractNumericValue("4326.290 (calculated)")).toBe("4326.290");
+    expect(extractNumericValue("1.2000 (inconsistent with detected R:R — verify manually)")).toBe("1.2000");
+    expect(extractNumericValue("133.34")).toBe("133.34");
     expect(parseNumber("4,386.502")).toBe(4386.502);
     expect(parseNumber("4,391.919 (calculated)")).toBe(4391.919);
     const extraction = {

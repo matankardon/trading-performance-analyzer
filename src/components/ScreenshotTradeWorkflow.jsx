@@ -17,6 +17,16 @@ const extractionFields = [
   ["strategy", "Strategy"],
 ];
 
+const numericExtractionFields = new Set([
+  "entry",
+  "exit",
+  "stopLoss",
+  "takeProfit",
+  "positionSize",
+  "riskReward",
+  "pnl",
+]);
+
 const conditionFields = [
   "Liquidity Sweep",
   "MSS",
@@ -38,6 +48,20 @@ function fileToBase64(selectedFile) {
     reader.onerror = () => reject(new Error("The screenshot could not be read."));
     reader.readAsDataURL(selectedFile);
   });
+}
+
+function numericMatch(value) {
+  return String(value ?? "").trim().match(/^[+-]?(?:\d[\d,]*\.?\d*|\.\d+)/);
+}
+
+function extractNumericValue(value) {
+  const match = numericMatch(value);
+  return match ? match[0].replace(/,/g, "") : "";
+}
+
+function getAnnotation(value) {
+  const match = numericMatch(value);
+  return match ? String(value).trim().slice(match[0].length).trim() : "";
 }
 
 function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onConsent }) {
@@ -146,6 +170,14 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
     setConditionStates((previous) => ({ ...previous, [name]: value }));
   }
 
+  function handleBack() {
+    if (stage === "review") {
+      setStage("ready");
+    } else if (stage === "ready") {
+      setStage("upload");
+    }
+  }
+
   function handleConfirm() {
     onConfirm({ extraction, notes, conditionStates, file, aiExtraction: rawExtraction });
   }
@@ -218,7 +250,7 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
               {file && <strong className="selected-file">{file.name}</strong>}
             </div>
             <div className="workflow-notice"><strong>AI analysis is connected.</strong><span>Results are drafts only. Review every field before saving.</span></div>
-            <div className="form-actions"><button className="cancel-btn" type="button" onClick={onClose}>Cancel</button><button className="save-btn" type="button" disabled={!file} onClick={handleAnalyze}>Continue to review</button></div>
+            <div className="form-actions">{stage === "ready" && <button className="cancel-btn" type="button" onClick={handleBack}>Back</button>}<button className="cancel-btn" type="button" onClick={onClose}>Cancel</button><button className="save-btn" type="button" disabled={!file} onClick={handleAnalyze}>Continue to review</button></div>
           </>
         ) : (
           <>
@@ -230,13 +262,17 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
               <div className="extraction-review-panel">
                 <div className="review-heading"><div><p className="eyebrow">TRADE DETECTED</p><h3>Review before saving</h3></div><span className="confidence-badge confidence-not-detected">{aiAnalyzed ? "AI EXTRACTED" : "NOT DETECTED"}</span></div>
                 <p className="review-disclaimer">{analysisError || (aiAnalyzed ? "AI-extracted data is a draft — verify every field before saving." : "Enter or correct values manually before continuing.")}</p>
-                <div className="extraction-grid">{extractionFields.map(([key, label]) => <label className="extraction-field" key={key}><span>{label}<em>NOT DETECTED</em></span><input name={key} value={extraction[key]} onChange={handleFieldChange} placeholder="Not detected" /></label>)}</div>
+                <div className="extraction-grid">{extractionFields.map(([key, label]) => {
+                  const isNumeric = numericExtractionFields.has(key);
+                  const annotation = isNumeric ? getAnnotation(extraction[key]) : "";
+                  return <label className="extraction-field" key={key}><span>{label}<em>NOT DETECTED</em></span><input name={key} type={isNumeric ? "number" : "text"} step={isNumeric ? "any" : undefined} value={isNumeric ? extractNumericValue(extraction[key]) : extraction[key]} onChange={handleFieldChange} placeholder="Not detected" />{annotation && <small className="field-ai-hint">{annotation}</small>}</label>;
+                })}</div>
                 <div className="detected-conditions"><p className="eyebrow">DETECTED SETUP CONDITIONS</p>{conditionFields.map((condition) => <label key={condition}><span>{condition}</span><select name={condition} value={conditionStates[condition]} onChange={handleConditionChange}><option>NOT DETECTED</option><option>CONFIDENT</option><option>LIKELY</option><option>UNCERTAIN</option></select></label>)}</div>
                 <label className="form-field screenshot-notes"><span>Notes / context</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Add context after reviewing the screenshot" rows="3" /></label>
               </div>
             </div>
             <div className="workflow-notice"><strong>Confirm first, save second.</strong><span>Confirming will prefill the existing Trade Form. You will still submit through the existing saveTrade flow.</span></div>
-            <div className="form-actions"><button className="cancel-btn" type="button" onClick={onClose}>Cancel</button><button className="save-btn" type="button" onClick={handleConfirm}>Confirm and open Trade Form</button></div>
+            <div className="form-actions"><button className="cancel-btn" type="button" onClick={handleBack}>Back</button><button className="cancel-btn" type="button" onClick={onClose}>Cancel</button><button className="save-btn" type="button" onClick={handleConfirm}>Confirm and open Trade Form</button></div>
           </>
         )}
       </div>

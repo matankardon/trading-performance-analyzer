@@ -1,5 +1,14 @@
 import { useState } from "react";
 import {
+  PieChart,
+  Pie,
+  Cell,
+  PolarAngleAxis,
+  RadialBar,
+  RadialBarChart,
+  ResponsiveContainer,
+} from "recharts";
+import {
   copySetupSnapshot,
   downloadSetupSnapshot,
   normalizeSetupSnapshot,
@@ -128,26 +137,98 @@ function MarketHeader({ market, asset, onAssetChange }) {
   );
 }
 
+function ScoreGauge({ value }) {
+  const numericValue = Number.isFinite(Number(value)) ? Math.max(0, Math.min(100, Number(value))) : null;
+  const chartData = [{ name: "Score", value: numericValue ?? 0, fill: "var(--color-gold)" }];
+
+  return (
+    <div className="score-gauge-shell" aria-label={numericValue !== null ? `Market trading score ${numericValue} out of 100` : "Market trading score unavailable"}>
+      <ResponsiveContainer width="100%" height={160}>
+        <RadialBarChart
+          data={chartData}
+          innerRadius="58%"
+          outerRadius="100%"
+          barSize={16}
+          startAngle={180}
+          endAngle={0}
+          cx="50%"
+          cy="58%"
+        >
+          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} axisLine={false} />
+          <RadialBar background clockWise dataKey="value" cornerRadius={10} fill="var(--color-gold)" />
+        </RadialBarChart>
+      </ResponsiveContainer>
+      <div className="score-gauge-center">
+        <strong>{numericValue ?? "--"}</strong>
+        <span>/ 100</span>
+      </div>
+    </div>
+  );
+}
+
+function ScoreBreakdownChart({ items = [] }) {
+  if (!items.length) {
+    return (
+      <div className="chart-empty-state">
+        <span>Awaiting score data</span>
+      </div>
+    );
+  }
+
+  const data = items.map((item) => ({
+    name: item.label,
+    value: Number.isFinite(Number(item.value)) ? Number(item.value) : 0,
+  }));
+
+  return (
+    <div className="score-breakdown-chart">
+      <ResponsiveContainer width="100%" height={120}>
+        <PieChart>
+          <Pie data={data} dataKey="value" innerRadius={24} outerRadius={46} paddingAngle={2} stroke="transparent">
+            {data.map((entry, index) => (
+              <Cell key={`${entry.name}-${index}`} fill={index % 2 === 0 ? "var(--color-gold)" : "#e0e7f0"} />
+            ))}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 function MarketTradingScore({ score }) {
   const [showDetails, setShowDetails] = useState(false);
   const hasScore = !unavailable(score.value);
 
+  const breakdown = scoreFactors
+    .map((factor) => ({
+      label: factor.label,
+      value: score.factors?.[factor.label],
+      maximum: factor.maximum,
+    }))
+    .filter((item) => !unavailable(item.value));
+
   return (
-    <section className="score-panel">
+    <section className="score-panel overview-score-panel">
       <div className="score-summary">
         <div>
           <p className="eyebrow">MARKET TRADING SCORE</p>
           <h2>How favorable is this environment for short-term trading?</h2>
-          <p className="score-disclaimer">This is decision support, not a price-direction prediction.</p>
-        </div>
-        <div className="score-value-wrap">
-          <strong>{hasScore ? score.value : "--"}</strong>
-          <span>/ 100</span>
-          <small>{score.status || "Score unavailable"}</small>
+          <p className="score-disclaimer">Decision support only — not a price-direction prediction.</p>
         </div>
       </div>
-      <div className="score-meter" aria-label={hasScore ? `Market trading score ${score.value} out of 100` : "Market trading score unavailable"}>
-        <span style={{ width: hasScore ? `${score.value}%` : "0%" }} />
+      <div className="overview-score-body">
+        <ScoreGauge value={score.value} />
+        <div className="score-factor-list">
+          {scoreFactors.map((factor) => {
+            const factorValue = score.factors?.[factor.label];
+            return (
+              <div className="score-factor-row" key={factor.label}>
+                <span>{factor.label}</span>
+                <strong>{unavailable(factorValue) ? "--" : `${factorValue}${factor.maximum ? ` / ${factor.maximum}` : ""}`}</strong>
+              </div>
+            );
+          })}
+        </div>
       </div>
       <div className="score-footer">
         <span>{score.confidence || "Awaiting market data and analysis"}</span>
@@ -169,6 +250,9 @@ function MarketTradingScore({ score }) {
           })}
         </div>
       )}
+      <div className="overview-score-chart-wrap">
+        <ScoreBreakdownChart items={breakdown} />
+      </div>
       <SourceMeta source={score.source} updated={score.updated} status={hasScore ? score.status : "Unavailable"} />
     </section>
   );
@@ -291,35 +375,75 @@ function QuickAccess({ onPageChange }) {
   );
 }
 
-function OverviewPage({ market, strategy, selectedAsset, onAssetChange, onPageChange }) {
+function OverviewPage({ market, strategy, selectedAsset, onAssetChange, onPageChange, score }) {
+  const [showMore, setShowMore] = useState(false);
   const status = market.status || "WAITING FOR DATA";
   const direction = market.bias || "Unavailable";
 
+  const recommendation =
+    strategy.state === "TRADE"
+      ? "Trade only with strong confirmation."
+      : strategy.state === "WAIT"
+        ? "Wait for cleaner confirmation."
+        : strategy.state === "AVOID"
+          ? "Avoid fresh entries for now."
+          : status === "Bullish"
+            ? "Conditions are constructive, but wait for confirmation."
+            : status === "Bearish"
+              ? "Risk is elevated; wait for a clearer setup."
+              : "Market is unclear. Wait for better confirmation.";
+
   return (
     <>
-      <MarketHeader market={market} asset={selectedAsset} onAssetChange={onAssetChange} />
+      <div className="overview-primary-row">
+        <MarketHeader market={market} asset={selectedAsset} onAssetChange={onAssetChange} />
+        <div className="overview-score-stack">
+          <MarketTradingScore score={score} />
+          <div className="overview-action-card">
+            <p className="eyebrow">WHAT SHOULD I DO?</p>
+            <strong>{recommendation}</strong>
+            <small>{strategy.state ? `Setup: ${strategy.state}` : "Setup signal waiting for data"}</small>
+          </div>
+        </div>
+      </div>
+
       <section className="overview-status-strip">
-        <div><span>Market status</span><strong>{status}</strong><small>{market.statusReason || "Connect market data to evaluate conditions."}</small></div>
-        <div><span>Directional bias</span><strong>{direction}</strong><small>Direction remains separate from trading suitability.</small></div>
-        <div><span>Setup readiness</span><strong>{strategy.state || "Unavailable"}</strong><small>{strategy.score ? `Setup Score ${strategy.score} / 100` : "Open Strategy for diagnostic detail."}</small></div>
+        <div><span>Market status</span><strong>{status}</strong><small>{market.statusReason || "Live data pending"}</small></div>
+        <div><span>Bias</span><strong>{direction}</strong><small>Separate from score</small></div>
+        <div><span>Setup</span><strong>{strategy.state || "Unavailable"}</strong><small>{strategy.score ? `Score ${strategy.score}` : "Waiting"}</small></div>
       </section>
-      <section className="overview-factors">
-        <div className="overview-factors-heading"><div><p className="eyebrow">TOP 3 THINGS TO KNOW</p><h2>What deserves attention first</h2></div><span className="section-status">Priority view</span></div>
-        <ol>
-          {(market.topFactors || []).slice(0, 3).map((factor, index) => <li key={factor.id || factor.text || index}><span>{index + 1}</span><strong>{factor.text || factor}</strong><small>{factor.context || "Provider context unavailable"}</small></li>)}
-          {(!market.topFactors || market.topFactors.length === 0) && <li className="overview-factor-empty"><span>--</span><strong>Waiting for normalized market analysis</strong><small>The three highest-priority factors will appear here when data is connected.</small></li>}
-        </ol>
-      </section>
-      <section className="overview-meaning">
-        <div><p className="eyebrow">WHAT DOES THIS MEAN?</p><h2>{market.interpretationTitle || "Waiting for sufficient market data"}</h2></div>
-        <p>{market.interpretation || "The Overview will translate market conditions, risk, and setup readiness into a concise trading context when analysis data is available."}</p>
-        <div className="overview-meaning-tags"><span>{market.bias || "Bias unavailable"}</span><span>{market.risk || "Risk unavailable"}</span><span>{market.confirmation || "Confirmation unavailable"}</span></div>
-      </section>
-      <section className="overview-readiness">
-        <div><p className="eyebrow">SETUP READINESS</p><h2>Does the current setup match your strategy?</h2><p>{strategy.state || "Setup analysis is waiting for chart data."}</p></div>
-        <div className="overview-readiness-score"><span>SETUP SCORE</span><strong>{strategy.score || "--"}</strong><small>Independent from Market Trading Score</small></div>
-        <button type="button" className="secondary-btn" onClick={() => onPageChange("Strategy")}>View Strategy Analysis <span aria-hidden="true">→</span></button>
-      </section>
+
+      <div className="overview-toggle-row">
+        <button type="button" className="secondary-btn overview-toggle-btn" onClick={() => setShowMore((value) => !value)}>
+          {showMore ? "Hide more detail" : "See more detail"}
+        </button>
+      </div>
+
+      {showMore && (
+        <div className="overview-detail-panel">
+          <div className="overview-insights-grid">
+            <section className="overview-factors">
+              <div className="overview-factors-heading"><div><p className="eyebrow">TOP 3 THINGS TO KNOW</p><h2>What deserves attention first</h2></div><span className="section-status">Priority view</span></div>
+              <ol>
+                {(market.topFactors || []).slice(0, 3).map((factor, index) => <li key={factor.id || factor.text || index}><span>{index + 1}</span><strong>{factor.text || factor}</strong><small>{factor.context || "Provider context unavailable"}</small></li>)}
+                {(!market.topFactors || market.topFactors.length === 0) && <li className="overview-factor-empty"><span>--</span><strong>Waiting for normalized market analysis</strong><small>The three highest-priority factors will appear here when data is connected.</small></li>}
+              </ol>
+            </section>
+            <section className="overview-meaning">
+              <div><p className="eyebrow">WHAT DOES THIS MEAN?</p><h2>{market.interpretationTitle || "Waiting for sufficient market data"}</h2></div>
+              <p>{market.interpretation || "The Overview will translate market conditions, risk, and setup readiness into a concise trading context when analysis data is available."}</p>
+              <div className="overview-meaning-tags"><span>{market.bias || "Bias unavailable"}</span><span>{market.risk || "Risk unavailable"}</span><span>{market.confirmation || "Confirmation unavailable"}</span></div>
+            </section>
+          </div>
+
+          <section className="overview-readiness">
+            <div><p className="eyebrow">SETUP READINESS</p><h2>Does the current setup match your strategy?</h2><p>{strategy.state || "Setup analysis is waiting for chart data."}</p></div>
+            <div className="overview-readiness-score"><span>SETUP SCORE</span><strong>{strategy.score || "--"}</strong><small>Independent from Market Trading Score</small></div>
+            <button type="button" className="secondary-btn" onClick={() => onPageChange("Strategy")}>View Strategy Analysis <span aria-hidden="true">→</span></button>
+          </section>
+        </div>
+      )}
+
       <QuickAccess onPageChange={onPageChange} />
     </>
   );
@@ -359,7 +483,7 @@ function ChartPage({ selectedAsset }) {
   );
 }
 
-function DayTradingDashboard({ page = "Overview", onAddTrade, onUploadScreenshot, selectedAsset = "", onAssetChange, onPageChange = () => {} }) {
+function DayTradingDashboard({ page = "Overview", onAddTrade, selectedAsset = "", onAssetChange, onPageChange = () => {} }) {
   const market = {};
   const score = {};
   const conditions = {};
@@ -369,9 +493,9 @@ function DayTradingDashboard({ page = "Overview", onAddTrade, onUploadScreenshot
     <div className="day-trading-dashboard">
       <header className="topbar dashboard-v2-header">
         <div><p className="eyebrow">DAY TRADING / {page.toUpperCase()}</p><h1>{page === "Overview" ? "What is happening right now?" : page}</h1><p className="dashboard-v2-subtitle">{page === "Overview" ? "Understand current market conditions before you decide to trade, wait, or avoid." : "A focused workspace for the next layer of your trading process."}</p></div>
-        {page === "Overview" && <div className="dashboard-v2-actions"><button className="secondary-btn" type="button" onClick={onUploadScreenshot}>Upload trade screenshot</button><button className="add-trade-btn" type="button" onClick={onAddTrade}>+ Add Trade</button></div>}
+        {page === "Overview" && <div className="dashboard-v2-actions"><button className="add-trade-btn" type="button" onClick={onAddTrade}>+ Add Trade</button></div>}
       </header>
-      {page === "Overview" && <><MarketTradingScore score={score} /><OverviewPage market={market} strategy={strategy} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} /></>}
+      {page === "Overview" && <OverviewPage market={market} strategy={strategy} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} score={score} />}
       {page === "Markets" && <MarketPage market={market} conditions={conditions} selectedAsset={selectedAsset} onAssetChange={onAssetChange} />}
       {page === "Strategy" && <StrategyPage strategy={strategy} selectedAsset={selectedAsset} onPageChange={onPageChange} />}
       {page === "Chart" && <ChartPage selectedAsset={selectedAsset} />}

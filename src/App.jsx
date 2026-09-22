@@ -3,6 +3,9 @@ import { supabase } from "./supabaseClient";
 import Auth from "./Auth";
 import PrivacyNotice from "./components/PrivacyNotice";
 import TickerBar from "./components/TickerBar";
+import TradeEntryChoiceModal from "./components/TradeEntryChoiceModal";
+import logoMark from "./assets/logo.svg";
+import { dbToTrade, emptyTrade, tradeToDb } from "./models/trade";
 
 const Analytics = lazy(() => import("./components/Analytics"));
 const EconomicCalendar = lazy(() => import("./components/EconomicCalendar"));
@@ -14,47 +17,27 @@ const StrategyLab = lazy(() => import("./components/StrategyLab"));
 
 import "./App.css";
 
-const emptyForm = {
-  date: "",
-  asset: "",
-  direction: "Long",
-  entry: "",
-  exit: "",
-  stopLoss: "",
-  takeProfit: "",
-  pnl: "",
-  strategy: "",
-  session: "New York",
-  notes: "",
-
-  liquiditySweep: false,
-  mss: false,
-  fvg: false,
-  displacement: false,
-  orderBlock: false,
-  stochasticConfirmation: false,
-
-  tradeQuality: "Valid Setup",
-  ruleBreak: false,
-};
+function numericMatch(text) {
+  return String(text ?? "").trim().match(/^[+-]?(?:\d[\d,]*\.?\d*|\.\d+)/);
+}
 
 function extractNumericValue(text) {
-  if (!text) {
-    return "";
-  }
-
-  const match = String(text).match(/^-?[\d,]+\.?\d*/);
+  const match = numericMatch(text);
   return match ? match[0].replace(/,/g, "") : "";
 }
 
 function hasAnnotation(text) {
-  return typeof text === "string" && (text.includes("(calculated)") || text.includes("(inconsistent"));
+  if (typeof text !== "string") {
+    return false;
+  }
+
+  const match = numericMatch(text);
+  return Boolean(match && text.trim().slice(match[0].length).trim());
 }
 
 function annotationHint(text) {
-  return text.includes("(inconsistent")
-    ? "AI flagged this as inconsistent — verify"
-    : "AI-calculated — double-check";
+  const match = numericMatch(text);
+  return match ? text.trim().slice(match[0].length).trim() : "";
 }
 
 function LazyViewFallback() {
@@ -73,6 +56,7 @@ function App() {
   const [strategyLibrary, setStrategyLibrary] = useState([]);
 
   const [showTradeForm, setShowTradeForm] = useState(false);
+  const [showTradeEntryChoice, setShowTradeEntryChoice] = useState(false);
   const [showScreenshotWorkflow, setShowScreenshotWorkflow] = useState(false);
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
@@ -97,7 +81,7 @@ function App() {
   const [resultFilter, setResultFilter] = useState("All");
   const [qualityFilter, setQualityFilter] = useState("All");
 
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyTrade);
 
   /*
   ==================================================
@@ -136,11 +120,7 @@ function App() {
         return;
       }
 
-      setTrades(
-        Array.isArray(data)
-          ? data
-          : []
-      );
+      setTrades(Array.isArray(data) ? data.map(dbToTrade) : []);
     } catch (error) {
       console.error(
         "Unexpected error loading trades:",
@@ -246,13 +226,13 @@ function App() {
 
     async function loadSelectedTradeScreenshot() {
       setSelectedTradeScreenshotUrl("");
-      if (!selectedTrade?.screenshot_path || !currentUser) {
+      if (!selectedTrade?.screenshotPath || !currentUser) {
         return;
       }
 
       const { data, error } = await supabase.storage
         .from("trade-screenshots")
-        .createSignedUrl(selectedTrade.screenshot_path, 300);
+        .createSignedUrl(selectedTrade.screenshotPath, 300);
 
       if (error) {
         console.error("Could not load trade screenshot:", error);
@@ -350,13 +330,31 @@ function App() {
     setScreenshotAnnotations({});
 
     setForm({
-      ...emptyForm,
+      ...emptyTrade,
       date: new Date()
         .toISOString()
         .split("T")[0],
     });
 
     setShowTradeForm(true);
+  }
+
+  function openTradeEntryChoice() {
+    setShowTradeEntryChoice(true);
+  }
+
+  function closeTradeEntryChoice() {
+    setShowTradeEntryChoice(false);
+  }
+
+  function chooseManualEntry() {
+    setShowTradeEntryChoice(false);
+    openAddTrade();
+  }
+
+  function chooseScreenshotEntry() {
+    setShowTradeEntryChoice(false);
+    openScreenshotWorkflow();
   }
 
   function openScreenshotWorkflow() {
@@ -398,13 +396,13 @@ function App() {
   }
 
   function confirmScreenshotExtraction({ extraction, notes, conditionStates, file, aiExtraction }) {
-    const numericFields = ["entry", "exit", "stopLoss", "takeProfit", "pnl"];
+    const numericFields = ["entry", "exit", "stopLoss", "takeProfit", "positionSize", "riskReward", "pnl"];
     const annotations = numericFields.reduce((fields, field) => ({
       ...fields,
       ...(hasAnnotation(extraction[field]) ? { [field]: annotationHint(extraction[field]) } : {}),
     }), {});
     const nextForm = {
-      ...emptyForm,
+      ...emptyTrade,
       date: extraction.date || "",
       asset: extraction.asset || "",
       direction: extraction.direction?.toLowerCase() === "short"
@@ -417,6 +415,10 @@ function App() {
       stopLoss: extractNumericValue(extraction.stopLoss),
       takeProfit: extractNumericValue(extraction.takeProfit),
       pnl: extractNumericValue(extraction.pnl),
+      positionSize: extractNumericValue(extraction.positionSize),
+      riskReward: extractNumericValue(extraction.riskReward),
+      time: extraction.time || "",
+      timeframe: extraction.timeframe || "",
       strategy: extraction.strategy || "",
       notes: notes || "",
       liquiditySweep: conditionStates?.["Liquidity Sweep"] === "CONFIDENT",
@@ -442,7 +444,7 @@ function App() {
     setScreenshotAnnotations({});
 
     setForm({
-      ...emptyForm,
+      ...emptyTrade,
 
       date: trade.date || "",
 
@@ -458,13 +460,25 @@ function App() {
         trade.exit ?? "",
 
       stopLoss:
-        trade.stop_loss ?? "",
+        trade.stopLoss ?? "",
 
       takeProfit:
-        trade.take_profit ?? "",
+        trade.takeProfit ?? "",
 
       pnl:
         trade.pnl ?? "",
+
+      positionSize:
+        trade.positionSize ?? "",
+
+      riskReward:
+        trade.riskReward ?? "",
+
+      time:
+        trade.time || "",
+
+      timeframe:
+        trade.timeframe || "",
 
       strategy:
         trade.strategy || "",
@@ -476,9 +490,7 @@ function App() {
         trade.notes || "",
 
       liquiditySweep:
-        Boolean(
-          trade.liquidity_sweep
-        ),
+        Boolean(trade.liquiditySweep),
 
       mss:
         Boolean(trade.mss),
@@ -492,23 +504,17 @@ function App() {
         ),
 
       orderBlock:
-        Boolean(
-          trade.order_block
-        ),
+        Boolean(trade.orderBlock),
 
       stochasticConfirmation:
-        Boolean(
-          trade.stochastic_confirmation
-        ),
+        Boolean(trade.stochasticConfirmation),
 
       tradeQuality:
-        trade.trade_quality ||
+        trade.tradeQuality ||
         "Valid Setup",
 
       ruleBreak:
-        Boolean(
-          trade.rule_break
-        ),
+        Boolean(trade.ruleBreak),
     });
 
     setSelectedTrade(null);
@@ -521,7 +527,7 @@ function App() {
     setScreenshotFile(null);
     setScreenshotAiExtraction(null);
     setScreenshotAnnotations({});
-    setForm(emptyForm);
+    setForm(emptyTrade);
   }
 
   /*
@@ -543,85 +549,10 @@ function App() {
 
     setSavingTrade(true);
 
-    const tradeData = {
-      user_id: currentUser.id,
-
-      date:
-        form.date || null,
-
-      asset:
-        form.asset.trim(),
-
-      direction:
-        form.direction,
-
-      entry:
-        form.entry === ""
-          ? null
-          : Number(form.entry),
-
-      exit:
-        form.exit === ""
-          ? null
-          : Number(form.exit),
-
-      stop_loss:
-        form.stopLoss === ""
-          ? null
-          : Number(form.stopLoss),
-
-      take_profit:
-        form.takeProfit === ""
-          ? null
-          : Number(form.takeProfit),
-
-      pnl:
-        form.pnl === ""
-          ? 0
-          : Number(form.pnl),
-
-      strategy:
-        form.strategy || null,
-
-      session:
-        form.session || "New York",
-
-      notes:
-        form.notes || null,
-
-      liquidity_sweep:
-        Boolean(
-          form.liquiditySweep
-        ),
-
-      mss:
-        Boolean(form.mss),
-
-      fvg:
-        Boolean(form.fvg),
-
-      displacement:
-        Boolean(
-          form.displacement
-        ),
-
-      order_block:
-        Boolean(
-          form.orderBlock
-        ),
-
-      stochastic_confirmation:
-        Boolean(
-          form.stochasticConfirmation
-        ),
-
-      trade_quality:
-        form.tradeQuality ||
-        "Valid Setup",
-
-      rule_break:
-        Boolean(form.ruleBreak),
-    };
+    const tradeData = tradeToDb({
+      ...form,
+      userId: currentUser.id,
+    });
 
     try {
       if (editingTrade) {
@@ -660,7 +591,7 @@ function App() {
             (trade) =>
               trade.id ===
               editingTrade.id
-                ? data
+                ? dbToTrade(data)
                 : trade
           )
         );
@@ -709,10 +640,11 @@ function App() {
           } else {
             const { data: updatedTrade, error: metadataError } = await supabase
               .from("trades")
-              .update({
-                screenshot_path: screenshotPath,
-                ai_extraction: screenshotAiExtraction,
-              })
+              .update(tradeToDb({
+                ...dbToTrade(data),
+                screenshotPath,
+                aiExtraction: screenshotAiExtraction,
+              }))
               .eq("id", data.id)
               .eq("user_id", currentUser.id)
               .select()
@@ -728,7 +660,7 @@ function App() {
         }
 
         setTrades((previous) => [
-          data,
+          dbToTrade(data),
           ...previous,
         ]);
       }
@@ -952,7 +884,7 @@ function App() {
           const matchesQuality =
             qualityFilter ===
               "All" ||
-            trade.trade_quality ===
+            trade.tradeQuality ===
               qualityFilter;
 
           return (
@@ -996,8 +928,7 @@ function App() {
         page={page}
         trades={trades}
         loadingTrades={loadingTrades}
-        onAddTrade={openAddTrade}
-        onUploadScreenshot={openScreenshotWorkflow}
+        onAddTrade={openTradeEntryChoice}
         selectedAsset={selectedAsset}
         onAssetChange={setSelectedAsset}
         onPageChange={setActivePage}
@@ -1029,7 +960,7 @@ function App() {
           <button
             className="add-trade-btn"
             onClick={
-              openAddTrade
+              openTradeEntryChoice
             }
           >
             + Add Trade
@@ -1319,7 +1250,7 @@ function App() {
                 <button
                   className="secondary-btn"
                   onClick={
-                    openAddTrade
+                    openTradeEntryChoice
                   }
                 >
                   Add Trade
@@ -1416,7 +1347,7 @@ function App() {
                           </td>
 
                           <td>
-                            {trade.trade_quality ||
+                            {trade.tradeQuality ||
                               "-"}
                           </td>
 
@@ -1495,7 +1426,7 @@ function App() {
     const checklist = [
       [
         "Liquidity Sweep",
-        selectedTrade.liquidity_sweep,
+        selectedTrade.liquiditySweep,
       ],
       [
         "MSS",
@@ -1511,11 +1442,11 @@ function App() {
       ],
       [
         "Order Block",
-        selectedTrade.order_block,
+        selectedTrade.orderBlock,
       ],
       [
         "Stochastic Confirmation",
-        selectedTrade.stochastic_confirmation,
+        selectedTrade.stochasticConfirmation,
       ],
     ];
 
@@ -1627,7 +1558,7 @@ function App() {
               </span>
 
               <strong>
-                {selectedTrade.trade_quality ||
+                {selectedTrade.tradeQuality ||
                   "-"}
               </strong>
             </div>
@@ -1656,7 +1587,7 @@ function App() {
               </span>
 
               <strong>
-                {selectedTrade.stop_loss ??
+                {selectedTrade.stopLoss ??
                   "-"}
               </strong>
             </div>
@@ -1667,7 +1598,7 @@ function App() {
               </span>
 
               <strong>
-                {selectedTrade.take_profit ??
+                {selectedTrade.takeProfit ??
                   "-"}
               </strong>
             </div>
@@ -1704,7 +1635,7 @@ function App() {
             </div>
           </div>
 
-          {selectedTrade.screenshot_path && (
+          {selectedTrade.screenshotPath && (
             <div className="detail-section">
               <p className="eyebrow">SCREENSHOT</p>
               {selectedTradeScreenshotUrl ? (
@@ -1726,7 +1657,7 @@ function App() {
             </div>
           </div>
 
-          {selectedTrade.rule_break && (
+          {selectedTrade.ruleBreak && (
             <div className="rule-warning">
               ⚠ This trade was marked
               as a rule break.
@@ -2242,7 +2173,6 @@ function App() {
       { page: "Chart", label: "Chart", icon: "CH" },
       { page: "Strategy", label: "Strategy", icon: "SY" },
       { page: "Strategy Lab", label: "Strategy Lab", icon: "SL" },
-      { page: "Backtesting", label: "Backtesting", icon: "BT" },
       { page: "Events & News", label: "Events & News", icon: "EV" },
       { page: "Sentiment", label: "Sentiment", icon: "SN" },
       { page: "Trades", label: "Trades", icon: "TR" },
@@ -2387,7 +2317,7 @@ function App() {
         </div>
 
         <div className="logo app-header-brand">
-          <span>TC</span>
+          <img className="app-header-logo-mark" src={logoMark} alt="" aria-hidden="true" />
           <div>
             <h2>Trade Catalyst</h2>
             <p>Trading Performance</p>
@@ -2449,10 +2379,6 @@ function App() {
             <StrategyLab initialView="library" strategies={strategyLibrary} onStrategiesChange={setStrategyLibrary} />
           )}
 
-          {isDayTrading && activePage === "Backtesting" && (
-            <StrategyLab initialView="backtesting" strategies={strategyLibrary} onStrategiesChange={setStrategyLibrary} />
-          )}
-
           {activePage ===
             "Settings" && (
             <div className="coming-soon">
@@ -2490,6 +2416,14 @@ function App() {
       {renderTradeForm()}
 
       {renderTradeDetails()}
+
+      {showTradeEntryChoice && (
+        <TradeEntryChoiceModal
+          onClose={closeTradeEntryChoice}
+          onManualEntry={chooseManualEntry}
+          onScreenshotEntry={chooseScreenshotEntry}
+        />
+      )}
 
       {(showScreenshotWorkflow || showScreenshotConsent) && (
         <Suspense fallback={<LazyViewFallback />}>

@@ -45,17 +45,22 @@ const conditionFields = [
 export const extractionWarning = "AI-extracted data is a draft — verify all fields before saving.";
 export const inconsistentExtractionWarning = "AI results were inconsistent across repeated checks — please verify every field carefully before saving.";
 
+export function extractNumericValue(value: number | string | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  const match = String(value).trim().match(/^[+-]?(?:\d[\d,]*\.?\d*|\.\d+)/);
+  return match ? match[0].replace(/,/g, "") : "";
+}
+
 export function parseNumber(value: number | string | null | undefined): number | null {
   if (typeof value === "string" && value.trim() === "") {
     return null;
   }
 
-  const normalized = typeof value === "string" ? value.trim().replace(/,/g, "") : value;
-  const parsed = typeof normalized === "number"
-    ? normalized
-    : typeof normalized === "string"
-      ? Number.parseFloat(normalized)
-      : Number.NaN;
+  const normalized = typeof value === "number" ? String(value) : extractNumericValue(value);
+  const parsed = normalized ? Number.parseFloat(normalized) : Number.NaN;
   return Number.isFinite(parsed) ? parsed : null;
 }
 

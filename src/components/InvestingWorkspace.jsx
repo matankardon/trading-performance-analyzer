@@ -143,7 +143,7 @@ function InvestingWorkspace({ page = "Overview" }) {
 
       {isOverview ? (
         <>
-          <section className="investing-signal-grid">
+          <section className="investing-summary-card">
             <div className="investing-signal-card"><span>Portfolio</span><strong>--</strong><small>No positions connected</small></div>
             <div className="investing-signal-card"><span>Watchlist</span><strong>--</strong><small>No companies added</small></div>
             <div className="investing-signal-card"><span>Research queue</span><strong>--</strong><small>Real signals pending</small></div>
