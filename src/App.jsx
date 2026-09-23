@@ -415,6 +415,7 @@ function App() {
       stopLoss: extractNumericValue(extraction.stopLoss),
       takeProfit: extractNumericValue(extraction.takeProfit),
       pnl: extractNumericValue(extraction.pnl),
+      strategyVersionId: null,
       positionSize: extractNumericValue(extraction.positionSize),
       riskReward: extractNumericValue(extraction.riskReward),
       time: extraction.time || "",
@@ -467,6 +468,9 @@ function App() {
 
       pnl:
         trade.pnl ?? "",
+
+      strategyVersionId:
+        trade.strategyVersionId ?? null,
 
       positionSize:
         trade.positionSize ?? "",
@@ -1963,14 +1967,25 @@ function App() {
                   <option value="">
                     Select strategy
                   </option>
+                  {strategyLibrary.map((strategy) => (
+                    <option value={strategy.name} key={strategy.id}>{strategy.name}</option>
+                  ))}
+                </select>
+              </div>
 
-                  <option value="Main Strategy">
-                    Main Strategy
-                  </option>
-
-                  <option value="Backup Strategy">
-                    Backup Strategy
-                  </option>
+              <div className="form-field">
+                <label htmlFor="strategyVersionId">Strategy Version</label>
+                <select
+                  id="strategyVersionId"
+                  name="strategyVersionId"
+                  value={form.strategyVersionId || ""}
+                  onChange={handleChange}
+                  disabled={!form.strategy}
+                >
+                  <option value="">Select version</option>
+                  {strategyLibrary.find((strategy) => strategy.name === form.strategy)?.versions.map((version) => (
+                    <option value={version.id} key={version.id}>v{version.version}</option>
+                  ))}
                 </select>
               </div>
 
@@ -2376,7 +2391,7 @@ function App() {
           )}
 
           {isDayTrading && activePage === "Strategy Lab" && (
-            <StrategyLab initialView="library" strategies={strategyLibrary} onStrategiesChange={setStrategyLibrary} />
+            <StrategyLab initialView="library" userId={currentUser?.id} onStrategiesChange={setStrategyLibrary} />
           )}
 
           {activePage ===

@@ -12,6 +12,7 @@ describe("canonical trade model", () => {
       risk_reward: "2.25",
       trade_time: "09:30",
       timeframe: "15m",
+      strategy_version_id: "version-1",
       liquidity_sweep: true,
       trade_quality: "A+ Setup",
     });
@@ -26,6 +27,7 @@ describe("canonical trade model", () => {
       riskReward: 2.25,
       time: "09:30",
       timeframe: "15m",
+      strategyVersionId: "version-1",
       liquiditySweep: true,
       tradeQuality: "A+ Setup",
     });
@@ -45,6 +47,7 @@ describe("canonical trade model", () => {
       time: "09:30",
       timeframe: "15m",
       liquiditySweep: true,
+      strategyVersionId: "version-1",
     });
 
     expect(payload).toMatchObject({
@@ -59,6 +62,7 @@ describe("canonical trade model", () => {
       trade_time: "09:30",
       timeframe: "15m",
       liquidity_sweep: true,
+      strategy_version_id: "version-1",
     });
   });
 });
