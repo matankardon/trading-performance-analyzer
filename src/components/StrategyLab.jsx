@@ -12,6 +12,7 @@ import {
   strategyToDb,
   strategyVersionToDb,
 } from "../models/strategy";
+import { fetchHistoricalBars } from "../services/historicalDataService";
 import "./StrategyLab.css";
 
 function LabHeader({ view, onViewChange }) {
@@ -60,14 +61,36 @@ function StrategyBuilder({ draft, setDraft, onSave, selectedStrategy }) {
 }
 
 function BacktestWorkspace({ strategies, request, setRequest }) {
+  const [bars, setBars] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState("");
   const selectedStrategy = strategies.find((strategy) => strategy.id === request.strategyId);
   const versions = selectedStrategy?.versions || [];
   const update = (field, value) => setRequest((previous) => ({ ...previous, [field]: value }));
+
+  async function runBacktest() {
+    setIsLoading(true);
+    setError("");
+    try {
+      const fetchedBars = await fetchHistoricalBars(request.asset, request.timeframe, request.startDate, request.endDate);
+      setBars(fetchedBars);
+    } catch (fetchError) {
+      setBars(null);
+      setError(fetchError.message);
+    } finally {
+      setIsLoading(false);
+    }
+  }
+
+  const status = bars
+    ? `${bars.length} bars loaded: ${request.startDate} to ${request.endDate}`
+    : "No historical data";
   return (
     <section className="strategy-lab-section backtest-section">
-      <div className="strategy-section-heading"><div><p className="eyebrow">BACKTESTING INTERFACE</p><h2>Test a strategy version</h2><p>Define the historical test request now. Results remain unavailable until a real OHLC data source and execution engine are connected.</p></div><span className="strategy-data-status">No historical data</span></div>
+      <div className="strategy-section-heading"><div><p className="eyebrow">BACKTESTING INTERFACE</p><h2>Test a strategy version</h2><p>Define the historical test request now. Results remain unavailable until a real OHLC data source and execution engine are connected.</p></div><span className="strategy-data-status">{status}</span></div>
       <div className="backtest-request-grid"><label>Strategy<select value={request.strategyId} onChange={(event) => update("strategyId", event.target.value)}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}</select></label><label>Strategy version<select value={request.versionId} onChange={(event) => update("versionId", event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{versions.map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label><label>Asset<input value={request.asset} onChange={(event) => update("asset", event.target.value)} placeholder="Symbol" /></label><label>Timeframe<input value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)} placeholder="15m" /></label><label>Start date<input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label><label>End date<input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label><label>Session<input value={request.session} onChange={(event) => update("session", event.target.value)} placeholder="All sessions" /></label><label>Risk per trade<input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label><label>Starting balance<input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label></div>
-      <div className="backtest-action-row"><button type="button" className="strategy-primary-action" disabled>Run backtest</button><span>Backtesting is unavailable until historical market data is connected.</span></div>
+      <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={runBacktest} disabled={isLoading}>{isLoading ? "Loading data..." : "Run backtest"}</button><span>Backtesting is unavailable until the execution engine is connected.</span></div>
+      {error && <p role="alert" className="strategy-error-message">{error}</p>}
       <div className="backtest-results-placeholder"><p className="eyebrow">RESULTS ARCHITECTURE</p><h3>Results will appear here</h3><div className="backtest-result-labels"><span>Total trades</span><span>Win rate</span><span>Net P&amp;L</span><span>Profit factor</span><span>Max drawdown</span><span>Expectancy</span></div><small>No simulated or fabricated results are shown.</small></div>
     </section>
   );

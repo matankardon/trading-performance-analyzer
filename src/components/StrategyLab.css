@@ -102,6 +102,12 @@
   opacity: 0.45;
 }
 
+.strategy-error-message {
+  margin: 12px 0 0;
+  color: #ff9b9b;
+  font-size: 12px;
+}
+
 .strategy-library-list {
   display: grid;
   gap: 7px;
