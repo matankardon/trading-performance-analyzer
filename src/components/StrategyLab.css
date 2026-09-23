@@ -357,11 +357,40 @@
 }
 
 .backtest-result-labels span {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
   padding: 12px;
   border-left: 2px solid var(--color-trading);
   color: var(--ink-faint);
   background: rgba(13, 23, 36, 0.66);
   font-size: 10px;
+}
+
+.backtest-result-labels strong {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+.backtest-disclaimer {
+  margin-top: 16px;
+  padding: 11px 13px;
+  border-left: 2px solid var(--terminal-amber);
+  color: var(--terminal-amber);
+  background: rgba(214, 163, 74, 0.08);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.backtest-equity-chart {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.backtest-equity-chart .recharts-responsive-container {
+  margin-top: 8px;
 }
 
 .backtest-results-placeholder > small {

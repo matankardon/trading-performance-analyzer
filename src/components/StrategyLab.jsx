@@ -1,4 +1,13 @@
 import { useEffect, useState } from "react";
+import {
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { supabase } from "../supabaseClient";
 import {
   createBacktestRequest,
@@ -12,6 +21,7 @@ import {
   strategyToDb,
   strategyVersionToDb,
 } from "../models/strategy";
+import { runBacktest, smaCrossover } from "../services/backtestEngine";
 import { fetchHistoricalBars } from "../services/historicalDataService";
 import "./StrategyLab.css";
 
@@ -60,8 +70,44 @@ function StrategyBuilder({ draft, setDraft, onSave, selectedStrategy }) {
   );
 }
 
+function parseRiskPerTrade(value) {
+  const normalized = String(value).trim();
+  const hasPercentSign = normalized.endsWith("%");
+  const numericValue = Number(hasPercentSign ? normalized.slice(0, -1).trim() : normalized);
+  const riskPerTrade = hasPercentSign || numericValue > 1 ? numericValue / 100 : numericValue;
+  if (!Number.isFinite(riskPerTrade) || riskPerTrade <= 0 || riskPerTrade > 1) {
+    throw new Error("Risk per trade must be a number greater than 0 and no more than 100%.");
+  }
+  return riskPerTrade;
+}
+
+function parseStartingBalance(value) {
+  const startingBalance = Number(String(value).trim());
+  if (!Number.isFinite(startingBalance) || startingBalance <= 0) {
+    throw new Error("Starting balance must be a number greater than zero.");
+  }
+  return startingBalance;
+}
+
+function formatCurrency(value) {
+  if (!Number.isFinite(value)) return "-";
+  return `$${value.toFixed(2)}`;
+}
+
+function formatMetric(value) {
+  if (value === Infinity) return "∞";
+  if (!Number.isFinite(value)) return "-";
+  return value.toFixed(2);
+}
+
+function formatChartTimestamp(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+}
+
 function BacktestWorkspace({ strategies, request, setRequest }) {
   const [bars, setBars] = useState(null);
+  const [backtestResult, setBacktestResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const selectedStrategy = strategies.find((strategy) => strategy.id === request.strategyId);
@@ -72,10 +118,26 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
     setIsLoading(true);
     setError("");
     try {
+      const riskPerTrade = parseRiskPerTrade(request.riskPerTrade);
+      const startingBalance = parseStartingBalance(request.startingBalance);
       const fetchedBars = await fetchHistoricalBars(request.asset, request.timeframe, request.startDate, request.endDate);
+      if (fetchedBars.length < 22) {
+        throw new Error("At least 22 historical bars are required for the SMA crossover backtest.");
+      }
+      const result = runBacktest({
+        bars: fetchedBars,
+        entryRule: smaCrossover(5, 20),
+        stopLossPct: 0.02,
+        takeProfitPct: 0.04,
+        riskPerTrade,
+        startingBalance,
+        direction: "long",
+      });
       setBars(fetchedBars);
+      setBacktestResult(result);
     } catch (fetchError) {
       setBars(null);
+      setBacktestResult(null);
       setError(fetchError.message);
     } finally {
       setIsLoading(false);
@@ -87,11 +149,11 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
     : "No historical data";
   return (
     <section className="strategy-lab-section backtest-section">
-      <div className="strategy-section-heading"><div><p className="eyebrow">BACKTESTING INTERFACE</p><h2>Test a strategy version</h2><p>Define the historical test request now. Results remain unavailable until a real OHLC data source and execution engine are connected.</p></div><span className="strategy-data-status">{status}</span></div>
+      <div className="strategy-section-heading"><div><p className="eyebrow">BACKTESTING INTERFACE</p><h2>Test a strategy version</h2><p>Run a deterministic test over real historical bars. This preview uses a placeholder SMA crossover entry rule while strategy-condition detection is still being built.</p></div><span className="strategy-data-status">{status}</span></div>
       <div className="backtest-request-grid"><label>Strategy<select value={request.strategyId} onChange={(event) => update("strategyId", event.target.value)}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}</select></label><label>Strategy version<select value={request.versionId} onChange={(event) => update("versionId", event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{versions.map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label><label>Asset<input value={request.asset} onChange={(event) => update("asset", event.target.value)} placeholder="Symbol" /></label><label>Timeframe<input value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)} placeholder="15m" /></label><label>Start date<input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label><label>End date<input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label><label>Session<input value={request.session} onChange={(event) => update("session", event.target.value)} placeholder="All sessions" /></label><label>Risk per trade<input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label><label>Starting balance<input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label></div>
-      <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={runBacktest} disabled={isLoading}>{isLoading ? "Loading data..." : "Run backtest"}</button><span>Backtesting is unavailable until the execution engine is connected.</span></div>
+      <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={runBacktest} disabled={isLoading}>{isLoading ? "Running backtest..." : "Run backtest"}</button><span>Uses real historical bars and the placeholder SMA crossover engine.</span></div>
       {error && <p role="alert" className="strategy-error-message">{error}</p>}
-      <div className="backtest-results-placeholder"><p className="eyebrow">RESULTS ARCHITECTURE</p><h3>Results will appear here</h3><div className="backtest-result-labels"><span>Total trades</span><span>Win rate</span><span>Net P&amp;L</span><span>Profit factor</span><span>Max drawdown</span><span>Expectancy</span></div><small>No simulated or fabricated results are shown.</small></div>
+      <div className="backtest-results-placeholder"><p className="eyebrow">BACKTEST RESULTS</p><h3>{backtestResult ? "Execution summary" : "Results will appear here"}</h3>{backtestResult ? <><div className="backtest-result-labels"><span>Total trades<strong>{backtestResult.totalTrades}</strong></span><span>Win rate<strong>{formatMetric(backtestResult.winRate)}%</strong></span><span>Net P&amp;L<strong>{formatCurrency(backtestResult.netPnl)}</strong></span><span>Profit factor<strong>{formatMetric(backtestResult.profitFactor)}</strong></span><span>Max drawdown<strong>{formatCurrency(backtestResult.maxDrawdown)}</strong></span><span>Expectancy<strong>{formatCurrency(backtestResult.expectancy)}</strong></span></div><p className="backtest-disclaimer">These results use a placeholder SMA crossover entry rule (5/20), not the selected strategy&apos;s declared MSS, FVG, order-block, liquidity-sweep, or other conditions. Those detectors are not implemented yet.</p><div className="backtest-equity-chart"><p className="eyebrow">EQUITY CURVE</p><ResponsiveContainer width="100%" height={240}><LineChart data={backtestResult.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.14)" /><XAxis dataKey="timestamp" tickFormatter={formatChartTimestamp} stroke="#7f94a8" tick={{ fontSize: 10 }} /><YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={formatChartTimestamp} /><Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></> : <small>Run a test to calculate metrics from the fetched historical bars.</small>}</div>
     </section>
   );
 }
