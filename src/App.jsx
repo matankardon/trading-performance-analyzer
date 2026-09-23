@@ -1,39 +1,53 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
 import Auth from "./Auth";
-import Analytics from "./components/Analytics";
-import EconomicCalendar from "./components/EconomicCalendar";
-import MarketSentiment from "./components/MarketSentiment";
-import InvestingWorkspace from "./components/InvestingWorkspace";
-import DayTradingDashboard from "./components/DayTradingDashboard";
-import ScreenshotTradeWorkflow from "./components/ScreenshotTradeWorkflow";
-import StrategyLab from "./components/StrategyLab";
+import PrivacyNotice from "./components/PrivacyNotice";
+import TickerBar from "./components/TickerBar";
+import TradeEntryChoiceModal from "./components/TradeEntryChoiceModal";
+import logoMark from "./assets/logo.svg";
+import { dbToTrade, emptyTrade, tradeToDb } from "./models/trade";
+
+const Analytics = lazy(() => import("./components/Analytics"));
+const EconomicCalendar = lazy(() => import("./components/EconomicCalendar"));
+const MarketSentiment = lazy(() => import("./components/MarketSentiment"));
+const InvestingWorkspace = lazy(() => import("./components/InvestingWorkspace"));
+const DayTradingDashboard = lazy(() => import("./components/DayTradingDashboard"));
+const ScreenshotTradeWorkflow = lazy(() => import("./components/ScreenshotTradeWorkflow"));
+const StrategyLab = lazy(() => import("./components/StrategyLab"));
 
 import "./App.css";
 
-const emptyForm = {
-  date: "",
-  asset: "",
-  direction: "Long",
-  entry: "",
-  exit: "",
-  stopLoss: "",
-  takeProfit: "",
-  pnl: "",
-  strategy: "",
-  session: "New York",
-  notes: "",
+function numericMatch(text) {
+  return String(text ?? "").trim().match(/^[+-]?(?:\d[\d,]*\.?\d*|\.\d+)/);
+}
 
-  liquiditySweep: false,
-  mss: false,
-  fvg: false,
-  displacement: false,
-  orderBlock: false,
-  stochasticConfirmation: false,
+function extractNumericValue(text) {
+  const match = numericMatch(text);
+  return match ? match[0].replace(/,/g, "") : "";
+}
 
-  tradeQuality: "Valid Setup",
-  ruleBreak: false,
-};
+function hasAnnotation(text) {
+  if (typeof text !== "string") {
+    return false;
+  }
+
+  const match = numericMatch(text);
+  return Boolean(match && text.trim().slice(match[0].length).trim());
+}
+
+function annotationHint(text) {
+  const match = numericMatch(text);
+  return match ? text.trim().slice(match[0].length).trim() : "";
+}
+
+function LazyViewFallback() {
+  return (
+    <div className="workflow-loading" role="status" aria-live="polite">
+      <span className="loading-spinner" aria-hidden="true" />
+      <strong>Loading view...</strong>
+    </div>
+  );
+}
 
 function App() {
   const [activeMode, setActiveMode] = useState("DAY TRADING");
@@ -42,7 +56,15 @@ function App() {
   const [strategyLibrary, setStrategyLibrary] = useState([]);
 
   const [showTradeForm, setShowTradeForm] = useState(false);
+  const [showTradeEntryChoice, setShowTradeEntryChoice] = useState(false);
   const [showScreenshotWorkflow, setShowScreenshotWorkflow] = useState(false);
+  const [showNavigationMenu, setShowNavigationMenu] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showScreenshotConsent, setShowScreenshotConsent] = useState(false);
+  const [screenshotFile, setScreenshotFile] = useState(null);
+  const [screenshotAiExtraction, setScreenshotAiExtraction] = useState(null);
+  const [screenshotAnnotations, setScreenshotAnnotations] = useState({});
+  const [selectedTradeScreenshotUrl, setSelectedTradeScreenshotUrl] = useState("");
   const [editingTrade, setEditingTrade] = useState(null);
   const [selectedTrade, setSelectedTrade] = useState(null);
 
@@ -59,7 +81,7 @@ function App() {
   const [resultFilter, setResultFilter] = useState("All");
   const [qualityFilter, setQualityFilter] = useState("All");
 
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm] = useState(emptyTrade);
 
   /*
   ==================================================
@@ -98,11 +120,7 @@ function App() {
         return;
       }
 
-      setTrades(
-        Array.isArray(data)
-          ? data
-          : []
-      );
+      setTrades(Array.isArray(data) ? data.map(dbToTrade) : []);
     } catch (error) {
       console.error(
         "Unexpected error loading trades:",
@@ -203,6 +221,35 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSelectedTradeScreenshot() {
+      setSelectedTradeScreenshotUrl("");
+      if (!selectedTrade?.screenshotPath || !currentUser) {
+        return;
+      }
+
+      const { data, error } = await supabase.storage
+        .from("trade-screenshots")
+        .createSignedUrl(selectedTrade.screenshotPath, 300);
+
+      if (error) {
+        console.error("Could not load trade screenshot:", error);
+        return;
+      }
+
+      if (!cancelled) {
+        setSelectedTradeScreenshotUrl(data?.signedUrl || "");
+      }
+    }
+
+    loadSelectedTradeScreenshot();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentUser, selectedTrade]);
+
   /*
   ==================================================
   AUTH SUCCESS
@@ -278,9 +325,12 @@ function App() {
 
   function openAddTrade() {
     setEditingTrade(null);
+    setScreenshotFile(null);
+    setScreenshotAiExtraction(null);
+    setScreenshotAnnotations({});
 
     setForm({
-      ...emptyForm,
+      ...emptyTrade,
       date: new Date()
         .toISOString()
         .split("T")[0],
@@ -289,18 +339,70 @@ function App() {
     setShowTradeForm(true);
   }
 
+  function openTradeEntryChoice() {
+    setShowTradeEntryChoice(true);
+  }
+
+  function closeTradeEntryChoice() {
+    setShowTradeEntryChoice(false);
+  }
+
+  function chooseManualEntry() {
+    setShowTradeEntryChoice(false);
+    openAddTrade();
+  }
+
+  function chooseScreenshotEntry() {
+    setShowTradeEntryChoice(false);
+    openScreenshotWorkflow();
+  }
+
   function openScreenshotWorkflow() {
-    setShowScreenshotWorkflow(true);
+    if (currentUser?.user_metadata?.screenshot_consent_acknowledged) {
+      setShowScreenshotWorkflow(true);
+    } else {
+      setShowScreenshotConsent(true);
+    }
   }
 
   function closeScreenshotWorkflow() {
     setShowScreenshotWorkflow(false);
+    setShowScreenshotConsent(false);
   }
 
-  function confirmScreenshotExtraction({ extraction, notes, conditionStates }) {
-    setEditingTrade(null);
-    setForm({
-      ...emptyForm,
+  async function handleScreenshotConsent(dontShowAgain) {
+    if (dontShowAgain) {
+      const { data, error } = await supabase.auth.updateUser({
+        data: {
+          ...(currentUser?.user_metadata || {}),
+          screenshot_consent_acknowledged: true,
+        },
+      });
+
+      if (error) {
+        console.error("Could not save screenshot consent:", error);
+        window.alert(`Could not save screenshot consent: ${error.message}`);
+        return false;
+      }
+
+      if (data?.user) {
+        setCurrentUser(data.user);
+      }
+    }
+
+    setShowScreenshotConsent(false);
+    setShowScreenshotWorkflow(true);
+    return true;
+  }
+
+  function confirmScreenshotExtraction({ extraction, notes, conditionStates, file, aiExtraction }) {
+    const numericFields = ["entry", "exit", "stopLoss", "takeProfit", "positionSize", "riskReward", "pnl"];
+    const annotations = numericFields.reduce((fields, field) => ({
+      ...fields,
+      ...(hasAnnotation(extraction[field]) ? { [field]: annotationHint(extraction[field]) } : {}),
+    }), {});
+    const nextForm = {
+      ...emptyTrade,
       date: extraction.date || "",
       asset: extraction.asset || "",
       direction: extraction.direction?.toLowerCase() === "short"
@@ -308,11 +410,16 @@ function App() {
         : extraction.direction?.toLowerCase() === "long"
         ? "Long"
         : "",
-      entry: extraction.entry || "",
-      exit: extraction.exit || "",
-      stopLoss: extraction.stopLoss || "",
-      takeProfit: extraction.takeProfit || "",
-      pnl: extraction.pnl || "",
+      entry: extractNumericValue(extraction.entry),
+      exit: extractNumericValue(extraction.exit),
+      stopLoss: extractNumericValue(extraction.stopLoss),
+      takeProfit: extractNumericValue(extraction.takeProfit),
+      pnl: extractNumericValue(extraction.pnl),
+      strategyVersionId: null,
+      positionSize: extractNumericValue(extraction.positionSize),
+      riskReward: extractNumericValue(extraction.riskReward),
+      time: extraction.time || "",
+      timeframe: extraction.timeframe || "",
       strategy: extraction.strategy || "",
       notes: notes || "",
       liquiditySweep: conditionStates?.["Liquidity Sweep"] === "CONFIDENT",
@@ -321,16 +428,24 @@ function App() {
       displacement: conditionStates?.Displacement === "CONFIDENT",
       orderBlock: conditionStates?.["Order Block"] === "CONFIDENT",
       stochasticConfirmation: conditionStates?.["Stochastic Confirmation"] === "CONFIDENT",
-    });
+    };
+    setEditingTrade(null);
+    setScreenshotFile(file || null);
+    setScreenshotAiExtraction(aiExtraction || null);
+    setScreenshotAnnotations(annotations);
+    setForm(nextForm);
     setShowScreenshotWorkflow(false);
     setShowTradeForm(true);
   }
 
   function openEditTrade(trade) {
     setEditingTrade(trade);
+    setScreenshotFile(null);
+    setScreenshotAiExtraction(null);
+    setScreenshotAnnotations({});
 
     setForm({
-      ...emptyForm,
+      ...emptyTrade,
 
       date: trade.date || "",
 
@@ -346,13 +461,28 @@ function App() {
         trade.exit ?? "",
 
       stopLoss:
-        trade.stop_loss ?? "",
+        trade.stopLoss ?? "",
 
       takeProfit:
-        trade.take_profit ?? "",
+        trade.takeProfit ?? "",
 
       pnl:
         trade.pnl ?? "",
+
+      strategyVersionId:
+        trade.strategyVersionId ?? null,
+
+      positionSize:
+        trade.positionSize ?? "",
+
+      riskReward:
+        trade.riskReward ?? "",
+
+      time:
+        trade.time || "",
+
+      timeframe:
+        trade.timeframe || "",
 
       strategy:
         trade.strategy || "",
@@ -364,9 +494,7 @@ function App() {
         trade.notes || "",
 
       liquiditySweep:
-        Boolean(
-          trade.liquidity_sweep
-        ),
+        Boolean(trade.liquiditySweep),
 
       mss:
         Boolean(trade.mss),
@@ -380,23 +508,17 @@ function App() {
         ),
 
       orderBlock:
-        Boolean(
-          trade.order_block
-        ),
+        Boolean(trade.orderBlock),
 
       stochasticConfirmation:
-        Boolean(
-          trade.stochastic_confirmation
-        ),
+        Boolean(trade.stochasticConfirmation),
 
       tradeQuality:
-        trade.trade_quality ||
+        trade.tradeQuality ||
         "Valid Setup",
 
       ruleBreak:
-        Boolean(
-          trade.rule_break
-        ),
+        Boolean(trade.ruleBreak),
     });
 
     setSelectedTrade(null);
@@ -406,7 +528,10 @@ function App() {
   function closeTradeForm() {
     setShowTradeForm(false);
     setEditingTrade(null);
-    setForm(emptyForm);
+    setScreenshotFile(null);
+    setScreenshotAiExtraction(null);
+    setScreenshotAnnotations({});
+    setForm(emptyTrade);
   }
 
   /*
@@ -428,85 +553,10 @@ function App() {
 
     setSavingTrade(true);
 
-    const tradeData = {
-      user_id: currentUser.id,
-
-      date:
-        form.date || null,
-
-      asset:
-        form.asset.trim(),
-
-      direction:
-        form.direction,
-
-      entry:
-        form.entry === ""
-          ? null
-          : Number(form.entry),
-
-      exit:
-        form.exit === ""
-          ? null
-          : Number(form.exit),
-
-      stop_loss:
-        form.stopLoss === ""
-          ? null
-          : Number(form.stopLoss),
-
-      take_profit:
-        form.takeProfit === ""
-          ? null
-          : Number(form.takeProfit),
-
-      pnl:
-        form.pnl === ""
-          ? 0
-          : Number(form.pnl),
-
-      strategy:
-        form.strategy || null,
-
-      session:
-        form.session || "New York",
-
-      notes:
-        form.notes || null,
-
-      liquidity_sweep:
-        Boolean(
-          form.liquiditySweep
-        ),
-
-      mss:
-        Boolean(form.mss),
-
-      fvg:
-        Boolean(form.fvg),
-
-      displacement:
-        Boolean(
-          form.displacement
-        ),
-
-      order_block:
-        Boolean(
-          form.orderBlock
-        ),
-
-      stochastic_confirmation:
-        Boolean(
-          form.stochasticConfirmation
-        ),
-
-      trade_quality:
-        form.tradeQuality ||
-        "Valid Setup",
-
-      rule_break:
-        Boolean(form.ruleBreak),
-    };
+    const tradeData = tradeToDb({
+      ...form,
+      userId: currentUser.id,
+    });
 
     try {
       if (editingTrade) {
@@ -545,12 +595,12 @@ function App() {
             (trade) =>
               trade.id ===
               editingTrade.id
-                ? data
+                ? dbToTrade(data)
                 : trade
           )
         );
       } else {
-        const {
+        let {
           data,
           error,
         } = await supabase
@@ -574,8 +624,47 @@ function App() {
           return;
         }
 
+        if (screenshotFile && data?.id) {
+          const extension = screenshotFile.name
+            .split(".")
+            .pop()
+            ?.toLowerCase()
+            .replace(/[^a-z0-9]/g, "") || "jpg";
+          const screenshotPath = `${currentUser.id}/${data.id}.${extension}`;
+          const { error: uploadError } = await supabase.storage
+            .from("trade-screenshots")
+            .upload(screenshotPath, screenshotFile, {
+              contentType: screenshotFile.type || "image/jpeg",
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error("Could not upload trade screenshot:", uploadError);
+            window.alert(`Trade saved, but the screenshot could not be uploaded: ${uploadError.message}`);
+          } else {
+            const { data: updatedTrade, error: metadataError } = await supabase
+              .from("trades")
+              .update(tradeToDb({
+                ...dbToTrade(data),
+                screenshotPath,
+                aiExtraction: screenshotAiExtraction,
+              }))
+              .eq("id", data.id)
+              .eq("user_id", currentUser.id)
+              .select()
+              .single();
+
+            if (metadataError) {
+              console.error("Could not save screenshot metadata:", metadataError);
+              window.alert(`Trade saved, but screenshot metadata could not be saved: ${metadataError.message}`);
+            } else {
+              data = updatedTrade;
+            }
+          }
+        }
+
         setTrades((previous) => [
-          data,
+          dbToTrade(data),
           ...previous,
         ]);
       }
@@ -799,7 +888,7 @@ function App() {
           const matchesQuality =
             qualityFilter ===
               "All" ||
-            trade.trade_quality ===
+            trade.tradeQuality ===
               qualityFilter;
 
           return (
@@ -843,8 +932,7 @@ function App() {
         page={page}
         trades={trades}
         loadingTrades={loadingTrades}
-        onAddTrade={openAddTrade}
-        onUploadScreenshot={openScreenshotWorkflow}
+        onAddTrade={openTradeEntryChoice}
         selectedAsset={selectedAsset}
         onAssetChange={setSelectedAsset}
         onPageChange={setActivePage}
@@ -876,7 +964,7 @@ function App() {
           <button
             className="add-trade-btn"
             onClick={
-              openAddTrade
+              openTradeEntryChoice
             }
           >
             + Add Trade
@@ -1166,7 +1254,7 @@ function App() {
                 <button
                   className="secondary-btn"
                   onClick={
-                    openAddTrade
+                    openTradeEntryChoice
                   }
                 >
                   Add Trade
@@ -1263,7 +1351,7 @@ function App() {
                           </td>
 
                           <td>
-                            {trade.trade_quality ||
+                            {trade.tradeQuality ||
                               "-"}
                           </td>
 
@@ -1342,7 +1430,7 @@ function App() {
     const checklist = [
       [
         "Liquidity Sweep",
-        selectedTrade.liquidity_sweep,
+        selectedTrade.liquiditySweep,
       ],
       [
         "MSS",
@@ -1358,11 +1446,11 @@ function App() {
       ],
       [
         "Order Block",
-        selectedTrade.order_block,
+        selectedTrade.orderBlock,
       ],
       [
         "Stochastic Confirmation",
-        selectedTrade.stochastic_confirmation,
+        selectedTrade.stochasticConfirmation,
       ],
     ];
 
@@ -1474,7 +1562,7 @@ function App() {
               </span>
 
               <strong>
-                {selectedTrade.trade_quality ||
+                {selectedTrade.tradeQuality ||
                   "-"}
               </strong>
             </div>
@@ -1503,7 +1591,7 @@ function App() {
               </span>
 
               <strong>
-                {selectedTrade.stop_loss ??
+                {selectedTrade.stopLoss ??
                   "-"}
               </strong>
             </div>
@@ -1514,7 +1602,7 @@ function App() {
               </span>
 
               <strong>
-                {selectedTrade.take_profit ??
+                {selectedTrade.takeProfit ??
                   "-"}
               </strong>
             </div>
@@ -1551,6 +1639,17 @@ function App() {
             </div>
           </div>
 
+          {selectedTrade.screenshotPath && (
+            <div className="detail-section">
+              <p className="eyebrow">SCREENSHOT</p>
+              {selectedTradeScreenshotUrl ? (
+                <img className="trade-detail-screenshot" src={selectedTradeScreenshotUrl} alt="Saved trade screenshot" />
+              ) : (
+                <p className="trade-notes">Loading private screenshot...</p>
+              )}
+            </div>
+          )}
+
           <div className="detail-section">
             <p className="eyebrow">
               NOTES
@@ -1562,7 +1661,7 @@ function App() {
             </div>
           </div>
 
-          {selectedTrade.rule_break && (
+          {selectedTrade.ruleBreak && (
             <div className="rule-warning">
               ⚠ This trade was marked
               as a rule break.
@@ -1663,6 +1762,7 @@ function App() {
                     handleChange
                   }
                 />
+                {screenshotAnnotations.entry && <span className="field-ai-hint">{screenshotAnnotations.entry}</span>}
               </div>
 
               <div className="form-field">
@@ -1761,6 +1861,7 @@ function App() {
                     handleChange
                   }
                 />
+                {screenshotAnnotations.entry && <span className="field-ai-hint">{screenshotAnnotations.entry}</span>}
               </div>
 
               <div className="form-field">
@@ -1781,6 +1882,7 @@ function App() {
                     handleChange
                   }
                 />
+                {screenshotAnnotations.exit && <span className="field-ai-hint">{screenshotAnnotations.exit}</span>}
               </div>
 
               <div className="form-field">
@@ -1801,6 +1903,7 @@ function App() {
                     handleChange
                   }
                 />
+                {screenshotAnnotations.stopLoss && <span className="field-ai-hint">{screenshotAnnotations.stopLoss}</span>}
               </div>
 
               <div className="form-field">
@@ -1821,6 +1924,7 @@ function App() {
                     handleChange
                   }
                 />
+                {screenshotAnnotations.takeProfit && <span className="field-ai-hint">{screenshotAnnotations.takeProfit}</span>}
               </div>
 
               <div className="form-field">
@@ -1842,6 +1946,7 @@ function App() {
                   }
                   required
                 />
+                {screenshotAnnotations.pnl && <span className="field-ai-hint">{screenshotAnnotations.pnl}</span>}
               </div>
 
               <div className="form-field">
@@ -1862,14 +1967,25 @@ function App() {
                   <option value="">
                     Select strategy
                   </option>
+                  {strategyLibrary.map((strategy) => (
+                    <option value={strategy.name} key={strategy.id}>{strategy.name}</option>
+                  ))}
+                </select>
+              </div>
 
-                  <option value="Main Strategy">
-                    Main Strategy
-                  </option>
-
-                  <option value="Backup Strategy">
-                    Backup Strategy
-                  </option>
+              <div className="form-field">
+                <label htmlFor="strategyVersionId">Strategy Version</label>
+                <select
+                  id="strategyVersionId"
+                  name="strategyVersionId"
+                  value={form.strategyVersionId || ""}
+                  onChange={handleChange}
+                  disabled={!form.strategy}
+                >
+                  <option value="">Select version</option>
+                  {strategyLibrary.find((strategy) => strategy.name === form.strategy)?.versions.map((version) => (
+                    <option value={version.id} key={version.id}>v{version.version}</option>
+                  ))}
                 </select>
               </div>
 
@@ -2072,7 +2188,6 @@ function App() {
       { page: "Chart", label: "Chart", icon: "CH" },
       { page: "Strategy", label: "Strategy", icon: "SY" },
       { page: "Strategy Lab", label: "Strategy Lab", icon: "SL" },
-      { page: "Backtesting", label: "Backtesting", icon: "BT" },
       { page: "Events & News", label: "Events & News", icon: "EV" },
       { page: "Sentiment", label: "Sentiment", icon: "SN" },
       { page: "Trades", label: "Trades", icon: "TR" },
@@ -2092,6 +2207,7 @@ function App() {
 
   function handleModeChange(mode) {
     setActiveMode(mode);
+    setShowNavigationMenu(false);
 
     if (mode === "DAY TRADING") {
       setActivePage("Overview");
@@ -2170,172 +2286,169 @@ function App() {
 
   return (
     <div className={`app ${isDayTrading ? "day-trading-mode" : "investing-mode"}`}>
-      <aside className="sidebar">
-        <div className="logo">
-          <span>TC</span>
+      <header className="app-header">
+        <div className="app-header-left">
+          <div className="nav-menu-wrap">
+            <button
+              type="button"
+              className="nav-menu-trigger"
+              aria-expanded={showNavigationMenu}
+              aria-haspopup="menu"
+              onClick={() => {
+                setShowNavigationMenu((previous) => !previous);
+                setShowProfileMenu(false);
+              }}
+            >
+              <span className="nav-menu-icon" aria-hidden="true">☰</span>
+              <span>{isDayTrading ? "Trading views" : "Investing views"}</span>
+            </button>
 
-          <div>
-            <h2>
-              Trade Catalyst
-            </h2>
+            {showNavigationMenu && (
+              <div className="nav-dropdown" role="menu">
+                <p className="nav-dropdown-label">{isDayTrading ? "DAY TRADING" : "INVESTING"}</p>
+                {navigationItems.map((item) => (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    key={item.page}
+                    className={`nav-dropdown-item ${activePage === item.page ? "active" : ""}`}
+                    onClick={() => {
+                      setActivePage(item.page);
+                      setShowNavigationMenu(false);
+                    }}
+                  >
+                    <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+                    <span>{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-            <p>
-              Trading Performance
-            </p>
+          <div className="mode-switcher" aria-label="Application mode switch">
+            <button type="button" className={`mode-btn ${isDayTrading ? "active" : ""}`} onClick={() => handleModeChange("DAY TRADING")}>DAY TRADING</button>
+            <button type="button" className={`mode-btn ${!isDayTrading ? "active" : ""}`} onClick={() => handleModeChange("INVESTING")}>INVESTING</button>
           </div>
         </div>
 
-        <div className="mode-switcher" aria-label="Application mode switch">
-          <button
-            type="button"
-            className={`mode-btn ${
-              isDayTrading ? "active" : ""
-            }`}
-            onClick={() =>
-              handleModeChange(
-                "DAY TRADING"
-              )
-            }
-          >
-            DAY TRADING
-          </button>
-
-          <button
-            type="button"
-            className={`mode-btn ${
-              !isDayTrading ? "active" : ""
-            }`}
-            onClick={() =>
-              handleModeChange(
-                "INVESTING"
-              )
-            }
-          >
-            INVESTING
-          </button>
+        <div className="logo app-header-brand">
+          <img className="app-header-logo-mark" src={logoMark} alt="" aria-hidden="true" />
+          <div>
+            <h2>Trade Catalyst</h2>
+            <p>Trading Performance</p>
+          </div>
         </div>
 
-        <nav>
-          {navigationItems.map(
-            (item) => (
-              <button
-                key={item.page}
-                className={`nav-item ${
-                  activePage === item.page
-                    ? "active"
-                    : ""
-                }`}
-                onClick={() =>
-                  setActivePage(
-                    item.page
-                  )
-                }
-              >
-                <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                <span>{item.label}</span>
-              </button>
-            )
+        <div className="profile-menu-wrap">
+          <button
+            type="button"
+            className="profile-trigger"
+            aria-expanded={showProfileMenu}
+            aria-haspopup="menu"
+            onClick={() => {
+              setShowProfileMenu((previous) => !previous);
+              setShowNavigationMenu(false);
+            }}
+          >
+            <span className="profile-avatar" aria-hidden="true">{currentUser?.email?.charAt(0).toUpperCase() || "U"}</span>
+            <span className="profile-email">{currentUser?.email || "Account"}</span>
+            <span aria-hidden="true">⌄</span>
+          </button>
+
+          {showProfileMenu && (
+            <div className="profile-dropdown" role="menu">
+              <button type="button" role="menuitem" className={`profile-dropdown-item ${activePage === "Settings" ? "active" : ""}`} onClick={() => { setActivePage("Settings"); setShowProfileMenu(false); }}>Settings</button>
+              <button type="button" role="menuitem" className={`profile-dropdown-item ${activePage === "Privacy" ? "active" : ""}`} onClick={() => { setActivePage("Privacy"); setShowProfileMenu(false); }}>Privacy Notice</button>
+              <button type="button" role="menuitem" className="profile-dropdown-item" onClick={handleLogout}>Sign Out</button>
+            </div>
           )}
-        </nav>
-
-        <div className="sidebar-bottom">
-          <button
-            className={`nav-item ${
-              activePage ===
-              "Settings"
-                ? "active"
-                : ""
-            }`}
-            onClick={() =>
-              setActivePage(
-                "Settings"
-              )
-            }
-          >
-            Settings
-          </button>
-
-          <button
-            className="nav-item"
-            onClick={
-              handleLogout
-            }
-          >
-            Sign Out
-          </button>
         </div>
-      </aside>
+      </header>
 
-      <main className="main-content">
-        {isDayTrading && ["Overview", "Markets", "Strategy", "Chart"].includes(activePage) && renderDashboard(activePage)}
+      <TickerBar />
 
-        {!isDayTrading && <InvestingWorkspace page={activePage} />}
+      <Suspense fallback={<LazyViewFallback />}>
+        <main className="main-content">
+          {isDayTrading && ["Overview", "Markets", "Strategy", "Chart"].includes(activePage) && renderDashboard(activePage)}
 
-        {isDayTrading && activePage === "Trades" && renderJournal()}
+          {!isDayTrading && <InvestingWorkspace page={activePage} />}
 
-        {activePage ===
-          "Analytics" && (
-          <Analytics
-            trades={trades}
-          />
-        )}
+          {isDayTrading && activePage === "Trades" && renderJournal()}
 
-        {isDayTrading && activePage === "Events & News" && (
+          {activePage ===
+            "Analytics" && (
+            <Analytics
+              trades={trades}
+            />
+          )}
+
+          {isDayTrading && activePage === "Events & News" && (
             <EconomicCalendar />
           )}
 
-        {isDayTrading && activePage === "Sentiment" && (
+          {isDayTrading && activePage === "Sentiment" && (
             <MarketSentiment />
           )}
 
-        {isDayTrading && activePage === "Strategy Lab" && (
-          <StrategyLab initialView="library" strategies={strategyLibrary} onStrategiesChange={setStrategyLibrary} />
-        )}
+          {isDayTrading && activePage === "Strategy Lab" && (
+            <StrategyLab initialView="library" userId={currentUser?.id} onStrategiesChange={setStrategyLibrary} />
+          )}
 
-        {isDayTrading && activePage === "Backtesting" && (
-          <StrategyLab initialView="backtesting" strategies={strategyLibrary} onStrategiesChange={setStrategyLibrary} />
-        )}
+          {activePage ===
+            "Settings" && (
+            <div className="coming-soon">
+              <p className="eyebrow">
+                ACCOUNT SETTINGS
+              </p>
 
-        {activePage ===
-          "Settings" && (
-          <div className="coming-soon">
-            <p className="eyebrow">
-              ACCOUNT SETTINGS
-            </p>
+              <h1>
+                Settings
+              </h1>
 
-            <h1>
-              Settings
-            </h1>
+              <p>
+                Signed in as{" "}
+                {currentUser.email}
+              </p>
 
-            <p>
-              Signed in as{" "}
-              {currentUser.email}
-            </p>
+              <button
+                className="delete-btn"
+                onClick={
+                  handleLogout
+                }
+                style={{
+                  marginTop: "20px",
+                }}
+              >
+                Sign Out
+              </button>
+            </div>
+          )}
 
-            <button
-              className="delete-btn"
-              onClick={
-                handleLogout
-              }
-              style={{
-                marginTop: "20px",
-              }}
-            >
-              Sign Out
-            </button>
-          </div>
-        )}
-      </main>
+          {activePage === "Privacy" && <PrivacyNotice />}
+        </main>
+      </Suspense>
 
       {renderTradeForm()}
 
       {renderTradeDetails()}
 
-      {showScreenshotWorkflow && (
-        <ScreenshotTradeWorkflow
-          onClose={closeScreenshotWorkflow}
-          onConfirm={confirmScreenshotExtraction}
+      {showTradeEntryChoice && (
+        <TradeEntryChoiceModal
+          onClose={closeTradeEntryChoice}
+          onManualEntry={chooseManualEntry}
+          onScreenshotEntry={chooseScreenshotEntry}
         />
+      )}
+
+      {(showScreenshotWorkflow || showScreenshotConsent) && (
+        <Suspense fallback={<LazyViewFallback />}>
+          <ScreenshotTradeWorkflow
+            onClose={closeScreenshotWorkflow}
+            onConfirm={confirmScreenshotExtraction}
+            showConsent={showScreenshotConsent}
+            onConsent={handleScreenshotConsent}
+          />
+        </Suspense>
       )}
     </div>
   );

@@ -7,16 +7,19 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  PieChart,
+  Pie,
+  Cell,
 } from "recharts";
 import "./Analytics.css";
 
 const setupConditions = [
-  ["liquidity_sweep", "Liquidity Sweep"],
+  ["liquiditySweep", "Liquidity Sweep"],
   ["mss", "MSS"],
   ["fvg", "FVG"],
   ["displacement", "Displacement"],
-  ["order_block", "Order Block"],
-  ["stochastic_confirmation", "Stochastic Confirmation"],
+  ["orderBlock", "Order Block"],
+  ["stochasticConfirmation", "Stochastic Confirmation"],
 ];
 
 const qualities = ["A+ Setup", "Valid Setup", "Emotional / Rule Break"];
@@ -54,16 +57,6 @@ function groupTrades(trades, getName) {
   }));
 }
 
-function Metric({ label, value, detail, tone = "neutral" }) {
-  return (
-    <div className={`analytics-metric analytics-metric-${tone}`}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-      <small>{detail}</small>
-    </div>
-  );
-}
-
 function SectionHeading({ eyebrow, title, description }) {
   return (
     <header className="analytics-section-heading">
@@ -76,22 +69,67 @@ function SectionHeading({ eyebrow, title, description }) {
   );
 }
 
-function ComparisonTable({ data, emptyLabel }) {
-  if (data.length === 0) {
-    return <div className="analytics-empty-inline">{emptyLabel}</div>;
-  }
-
-  const maxPnl = Math.max(...data.map((item) => Math.abs(item.pnl)), 1);
+function WinRateDonut({ wins, losses, total }) {
+  const winRate = total ? (wins / total) * 100 : 0;
+  const data = [
+    { name: "Wins", value: wins, color: "var(--color-investing)" },
+    { name: "Losses", value: losses, color: "#c76d75" },
+  ];
 
   return (
-    <div className="comparison-list">
-      {data.map((item) => (
-        <div className="comparison-row" key={item.name}>
-          <div className="comparison-label"><strong>{item.name}</strong><small>{item.trades} trades · {item.winRate}% win rate</small></div>
-          <div className="comparison-bar"><span className={item.pnl >= 0 ? "bar-positive" : "bar-negative"} style={{ width: `${Math.max((Math.abs(item.pnl) / maxPnl) * 100, 4)}%` }} /></div>
-          <strong className={item.pnl >= 0 ? "pnl-positive" : "pnl-negative"}>{money(item.pnl)}</strong>
+    <div className="analytics-winrate-chart">
+      <ResponsiveContainer width="100%" height={180}>
+        <PieChart>
+          <Pie data={data} dataKey="value" innerRadius={48} outerRadius={72} paddingAngle={2} stroke="transparent">
+            {data.map((entry, index) => (
+              <Cell key={`${entry.name}-${index}`} fill={entry.color} />
+            ))}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="analytics-winrate-center">
+        <strong>{total ? `${winRate.toFixed(1)}%` : "--"}</strong>
+        <span>Win rate</span>
+      </div>
+    </div>
+  );
+}
+
+function DistributionDonut({ title, data }) {
+  const chartData = data
+    .map((item) => ({ ...item, value: Math.abs(item.pnl) || item.trades }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 4);
+  const total = chartData.reduce((sum, item) => sum + item.value, 0);
+  const colors = ["var(--terminal-cyan)", "var(--color-investing)", "var(--terminal-amber)", "#c76d75"];
+
+  return (
+    <div className="distribution-card">
+      <div className="distribution-heading">
+        <h3>{title}</h3>
+        <span>{data.length} groups</span>
+      </div>
+      {chartData.length ? (
+        <div className="distribution-content">
+          <div className="distribution-chart">
+            <ResponsiveContainer width="100%" height={126}>
+              <PieChart>
+                <Pie data={chartData} dataKey="value" innerRadius={34} outerRadius={54} paddingAngle={2} stroke="transparent">
+                  {chartData.map((item, index) => <Cell key={item.name} fill={colors[index]} />)}
+                </Pie>
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="distribution-legend">
+            {chartData.map((item, index) => (
+              <div key={item.name}>
+                <span><i style={{ background: colors[index] }} />{item.name}</span>
+                <strong>{total ? `${Math.round((item.value / total) * 100)}%` : "--"}</strong>
+              </div>
+            ))}
+          </div>
         </div>
-      ))}
+      ) : <div className="analytics-empty-inline">No group data yet.</div>}
     </div>
   );
 }
@@ -180,13 +218,13 @@ function Analytics({ trades = [] }) {
   }), [trades]);
 
   const qualityData = useMemo(() => qualities.map((name) => {
-    const matching = trades.filter((trade) => trade.trade_quality === name);
+    const matching = trades.filter((trade) => trade.tradeQuality === name);
     const wins = matching.filter((trade) => valueOf(trade) > 0).length;
     return { name, trades: matching.length, winRate: matching.length ? Math.round((wins / matching.length) * 100) : 0, pnl: matching.reduce((sum, trade) => sum + valueOf(trade), 0) };
   }), [trades]);
 
-  const ruleBreakTrades = trades.filter((trade) => trade.rule_break);
-  const cleanTrades = trades.filter((trade) => !trade.rule_break);
+  const ruleBreakTrades = trades.filter((trade) => trade.ruleBreak);
+  const cleanTrades = trades.filter((trade) => !trade.ruleBreak);
 
   const insights = useMemo(() => {
     if (trades.length < 5) {
@@ -212,22 +250,85 @@ function Analytics({ trades = [] }) {
 
   return (
     <div className="analytics-page">
-      <header className="topbar analytics-header"><div><p className="eyebrow">PERFORMANCE INTELLIGENCE</p><h1>Analytics</h1><p className="analytics-subtitle">A structured report on how you perform, where it happens, and what your execution reveals.</p></div></header>
+      <header className="topbar analytics-header"><div><p className="eyebrow">PERFORMANCE INTELLIGENCE</p><h1>Analytics</h1><p className="analytics-subtitle">A simple view of how your trading is going.</p></div></header>
 
-      <section className="analytics-performance-overview">
-        <SectionHeading eyebrow="PERFORMANCE OVERVIEW" title="How am I performing?" description="The headline result first, supporting context second." />
-        <div className="performance-overview-layout"><div className={`net-pnl-hero ${performance.netPnL >= 0 ? "positive" : "negative"}`}><span>NET P&amp;L</span><strong>{money(performance.netPnL)}</strong><small>{performance.total} recorded trades · {performance.wins} wins · {performance.losses} losses</small></div><div className="performance-supporting-metrics"><Metric label="Win Rate" value={`${performance.winRate.toFixed(1)}%`} detail={`${performance.breakeven} breakeven`} tone="positive" /><Metric label="Profit Factor" value={performance.profitFactor.toFixed(2)} detail="Gross profit / gross loss" /><Metric label="Average Trade" value={money(performance.expectancy)} detail="Expectancy per trade" /></div></div>
+      <section className="analytics-overview-strip">
+        <div className={`net-pnl-hero ${performance.netPnL >= 0 ? "positive" : "negative"}`}>
+          <span>Net P&amp;L</span>
+          <strong>{money(performance.netPnL)}</strong>
+          <small>{performance.total} trades · {performance.wins} wins · {performance.losses} losses</small>
+        </div>
+
+        <div className="analytics-overview-card analytics-winrate-card">
+          <p className="eyebrow">WIN RATE</p>
+          <WinRateDonut wins={performance.wins} losses={performance.losses} total={performance.total} />
+        </div>
+
+        <div className="analytics-overview-card analytics-key-metrics">
+          <p className="eyebrow">MUST KNOW</p>
+          <div className="analytics-mini-metric"><span>Profit factor</span><strong>{performance.profitFactor.toFixed(2)}</strong></div>
+          <div className="analytics-mini-metric"><span>Expectancy</span><strong>{money(performance.expectancy)}</strong></div>
+          <div className="analytics-mini-metric"><span>Best streak</span><strong>{risk.winningStreak} wins</strong></div>
+        </div>
       </section>
 
-      <section className="analytics-equity-section"><SectionHeading eyebrow="PERFORMANCE TREND" title="Equity curve" description="Cumulative realized P&amp;L across the recorded trade sequence." /><div className="equity-chart-large"><ResponsiveContainer width="100%" height={350}><AreaChart data={equityData}><defs><linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" stopColor="#65c4c4" stopOpacity={0.28} /><stop offset="95%" stopColor="#65c4c4" stopOpacity={0} /></linearGradient></defs><CartesianGrid strokeDasharray="3 3" vertical={false} /><XAxis dataKey="trade" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} /><YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} /><Tooltip formatter={(value, name) => [money(value), name === "pnl" ? "Cumulative P&L" : "Drawdown"]} /><Area type="monotone" dataKey="pnl" stroke="#65c4c4" fill="url(#equityFill)" strokeWidth={2} dot={false} /></AreaChart></ResponsiveContainer></div><div className="equity-footer"><span>Largest drawdown: {money(risk.maxDrawdown)}</span><span>Latest equity: {money(equityData[equityData.length - 1]?.pnl || 0)}</span></div></section>
+      <section className="analytics-equity-section">
+        <header className="analytics-section-heading compact-heading">
+          <div>
+            <p className="eyebrow">PERFORMANCE TREND</p>
+            <h2>Equity curve</h2>
+          </div>
+        </header>
+        <div className="equity-chart-large">
+          <ResponsiveContainer width="100%" height={210}>
+            <AreaChart data={equityData}>
+              <defs>
+                <linearGradient id="equityFill" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="var(--color-trading)" stopOpacity={0.28} />
+                  <stop offset="95%" stopColor="var(--color-trading)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} />
+              <XAxis dataKey="trade" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip formatter={(value) => [money(value)]} />
+              <Area type="monotone" dataKey="pnl" stroke="var(--color-trading)" fill="url(#equityFill)" strokeWidth={2} dot={false} />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+        <div className="equity-footer"><span>Largest drawdown: {money(risk.maxDrawdown)}</span><span>Latest equity: {money(equityData[equityData.length - 1]?.pnl || 0)}</span></div>
+      </section>
 
-      <section className="analytics-comparison-section"><SectionHeading eyebrow="PERFORMANCE BREAKDOWN" title="Where is performance coming from?" description="Compare groups visually before opening the detailed journal." /><div className="comparison-grid"><div className="analytics-report-panel"><h3>Strategy Performance</h3><p>Which strategy performs best?</p><ComparisonTable data={strategyData} emptyLabel="No strategy data available." /></div><div className="analytics-report-panel"><h3>Session Performance</h3><p>Which session performs best?</p><ComparisonTable data={sessionData} emptyLabel="No session data available." /></div><div className="analytics-report-panel"><h3>Asset Performance</h3><p>Which assets contribute most?</p><ComparisonTable data={assetData} emptyLabel="No asset data available." /></div></div></section>
+      <section className="analytics-consolidated-row">
+        <section className="analytics-comparison-section">
+          <SectionHeading eyebrow="PERFORMANCE BREAKDOWN" title="What is working?" />
+          <div className="distribution-grid">
+            <DistributionDonut title="Strategy" data={strategyData} />
+            <DistributionDonut title="Session" data={sessionData} />
+            <DistributionDonut title="Asset" data={assetData} />
+          </div>
+        </section>
 
-      <section className="analytics-risk-section"><SectionHeading eyebrow="RISK & CONSISTENCY" title="How stable is the performance?" description="Compact risk markers from the existing trade sequence." /><div className="risk-metric-row"><Metric label="Average Win" value={money(performance.averageWin)} detail="Per winning trade" tone="positive" /><Metric label="Average Loss" value={`-${money(performance.averageLoss).replace("-", "")}`} detail="Per losing trade" tone="negative" /><Metric label="Win / Loss Ratio" value={risk.riskReward.toFixed(2)} detail="Average win divided by average loss" /><Metric label="Largest Win" value={money(risk.largestWin)} detail="Single recorded trade" tone="positive" /><Metric label="Largest Loss" value={money(risk.largestLoss)} detail="Single recorded trade" tone="negative" /><Metric label="Best Streak" value={`${risk.winningStreak} wins`} detail={`${risk.losingStreak} losses longest`} /></div></section>
+        <section className="analytics-risk-section">
+          <SectionHeading eyebrow="RISK & CONSISTENCY" title="How stable is it?" />
+          <div className="risk-stat-grid">
+            <div><span>Average win</span><strong className="pnl-positive">{money(performance.averageWin)}</strong></div>
+            <div><span>Average loss</span><strong className="pnl-negative">-{money(performance.averageLoss).replace("-", "")}</strong></div>
+            <div><span>Win / loss</span><strong>{risk.riskReward.toFixed(2)}</strong></div>
+            <div><span>Largest win</span><strong className="pnl-positive">{money(risk.largestWin)}</strong></div>
+            <div><span>Largest loss</span><strong className="pnl-negative">{money(risk.largestLoss)}</strong></div>
+            <div><span>Best streak</span><strong>{risk.winningStreak} wins</strong></div>
+          </div>
+        </section>
+      </section>
 
-      <section className="analytics-behavior-section"><SectionHeading eyebrow="TRADING BEHAVIOR" title="What does execution reveal?" description="Condition and quality analysis uses only fields recorded in the journal." /><div className="behavior-layout"><div className="analytics-report-panel"><h3>Setup Condition Win Rates</h3><div className="behavior-bars">{behaviorData.map((item) => <div className="behavior-bar-row" key={item.label}><div><span>{item.label}</span><small>{item.trades} trades</small></div><div className="behavior-bar"><span style={{ width: `${item.winRate}%` }} /></div><strong>{item.trades ? `${item.winRate}%` : "--"}</strong></div>)}</div></div><div className="analytics-report-panel"><h3>Rule Compliance</h3><div className="compliance-visual"><div><strong>{trades.length ? `${Math.round((cleanTrades.length / trades.length) * 100)}%` : "--"}</strong><span>Clean trades</span></div><div className="compliance-track"><span style={{ width: `${trades.length ? (cleanTrades.length / trades.length) * 100 : 0}%` }} /></div><p>{ruleBreakTrades.length ? `${ruleBreakTrades.length} rule-break trades recorded.` : "No rule-break trades recorded."}</p></div><div className="quality-mini-list">{qualityData.map((item) => <div key={item.name}><span>{item.name}</span><strong>{item.trades ? `${item.winRate}%` : "--"}</strong><small>{item.trades} trades · {money(item.pnl)}</small></div>)}</div></div></div></section>
-
-      <section className="analytics-insights-section"><SectionHeading eyebrow="PERFORMANCE INSIGHTS" title="What should I learn from this?" description="Observations appear only when the journal contains enough supporting trades." />{insights.length ? <ul>{insights.map((insight) => <li key={insight}>{insight}</li>)}</ul> : <div className="analytics-empty-inline">Add at least five trades, with repeated strategies or sessions, to surface transparent performance insights.</div>}</section>
+      <section className="analytics-behavior-section">
+        <SectionHeading eyebrow="TRADING BEHAVIOR" title="Execution snapshot" />
+        <div className="behavior-summary-grid">
+          <div className="behavior-bars">{behaviorData.map((item) => <div className="behavior-bar-row" key={item.label}><div><span>{item.label}</span><small>{item.trades} trades</small></div><div className="behavior-bar"><span style={{ width: `${item.winRate}%` }} /></div><strong>{item.trades ? `${item.winRate}%` : "--"}</strong></div>)}</div>
+          <div className="behavior-right-summary"><div className="compliance-visual"><div><strong>{trades.length ? `${Math.round((cleanTrades.length / trades.length) * 100)}%` : "--"}</strong><span>Clean trades</span></div><div className="compliance-track"><span style={{ width: `${trades.length ? (cleanTrades.length / trades.length) * 100 : 0}%` }} /></div><p>{ruleBreakTrades.length ? `${ruleBreakTrades.length} rule-break trades recorded.` : "No rule-break trades recorded."}</p></div><div className="insight-inline">{insights.length ? insights[0] : "Add more trades to surface a clear performance insight."}</div></div>
+        </div>
+      </section>
     </div>
   );
 }

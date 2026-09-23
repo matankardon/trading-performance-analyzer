@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Cell, Pie, PieChart, ResponsiveContainer } from "recharts";
 
 const expertOpinions = [
   { id: 1, source: "CNBC", analyst: "Jim Cramer", publicationDate: "2026-08-18", publicationTime: "09:30", asset: "Gold (XAUUSD)", bias: "Bullish", reasoning: "Fed signals potential rate cuts amid economic slowdown concerns. Gold typically benefits from lower rates and increased safe-haven demand.", sourceLink: "https://www.cnbc.com/", sourceType: "Cable News / Market Commentary" },
@@ -20,6 +21,31 @@ function SentimentBadge({ bias }) {
   return <span className={`sentiment-state sentiment-${bias.toLowerCase()}`}><i aria-hidden="true" />{bias}</span>;
 }
 
+function SentimentMix({ counts, total }) {
+  const data = [
+    { name: "Bullish", value: counts.bullish, color: "var(--success)" },
+    { name: "Neutral", value: counts.neutral, color: "var(--warning)" },
+    { name: "Bearish", value: counts.bearish, color: "var(--danger)" },
+  ];
+
+  return (
+    <div className="sentiment-mix">
+      <div className="sentiment-mix-chart">
+        <ResponsiveContainer width="100%" height={128}>
+          <PieChart>
+            <Pie data={data} dataKey="value" innerRadius={34} outerRadius={54} paddingAngle={2} stroke="transparent">
+              {data.map((item) => <Cell key={item.name} fill={item.color} />)}
+            </Pie>
+          </PieChart>
+        </ResponsiveContainer>
+        <strong>{total}</strong>
+        <span>views</span>
+      </div>
+      <div className="sentiment-mix-legend">{data.map((item) => <div key={item.name}><span><i style={{ background: item.color }} />{item.name}</span><strong>{item.value}</strong></div>)}</div>
+    </div>
+  );
+}
+
 function MarketSentiment() {
   const [selectedBias, setSelectedBias] = useState("All");
   const [search, setSearch] = useState("");
@@ -36,11 +62,11 @@ function MarketSentiment() {
   return (
     <div className="sentiment-dashboard-page">
       <header className="topbar sentiment-dashboard-header"><div><p className="eyebrow">MARKET INTELLIGENCE</p><h1>Market Sentiment</h1><p>Understand how available professional views are leaning across the tracked market set.</p></div><span className="market-page-status">EXTERNAL VIEWS · ATTRIBUTED</span></header>
-      <section className="sentiment-overview-band"><div className="sentiment-overview-state"><span>Overall market state</span><strong>{overall}</strong><small>Derived from the available opinion set, not a price prediction.</small></div><div className="sentiment-overview-score"><span>View concentration</span><strong>{overallStrength} / 100</strong><div className="sentiment-overview-meter"><span style={{ width: `${overallStrength}%` }} /></div></div><div className="sentiment-counts"><div><strong>{counts.bullish}</strong><span>Bullish</span></div><div><strong>{counts.neutral}</strong><span>Neutral</span></div><div><strong>{counts.bearish}</strong><span>Bearish</span></div></div></section>
+      <section className="sentiment-overview-band"><div className="sentiment-overview-state"><span>Overall market state</span><strong>{overall}</strong><small>Based on attributed expert views.</small></div><div className="sentiment-overview-score"><span>View concentration</span><strong>{overallStrength} / 100</strong><div className="sentiment-overview-meter"><span style={{ width: `${overallStrength}%` }} /></div></div><SentimentMix counts={counts} total={expertOpinions.length} /></section>
       <section className="sentiment-asset-section"><div className="sentiment-section-heading"><div><p className="eyebrow">SENTIMENT BY ASSET</p><h2>Market reaction map</h2><p>Compact comparison of the current attributed view set.</p></div><span className="sentiment-data-note">No price or positioning score connected</span></div><div className="sentiment-asset-table"><div className="sentiment-asset-table-head"><span>Asset</span><span>Direction</span><span>Signal strength</span><span>Context</span></div>{sentimentRows.map(([asset, bias, context]) => <div className="sentiment-asset-row" key={asset}><strong>{asset}</strong><SentimentBadge bias={bias} /><div className="sentiment-row-meter"><span className={`meter-${bias.toLowerCase()}`} style={{ width: bias === "Neutral" ? "50%" : "70%" }} /></div><small>{context}</small></div>)}</div></section>
-      <section className="sentiment-bridge-section"><div><p className="eyebrow">NEWS → MARKET IMPACT → SENTIMENT</p><h2>Connect the explanation chain</h2><p>Automated relationships between headlines, affected assets, and sentiment are not connected yet.</p></div><div className="sentiment-bridge-flow"><span>News source</span><b>→</b><span>Affected market</span><b>→</b><span>Sentiment response</span></div><small className="sentiment-bridge-status">Waiting for linked event and sentiment data</small></section>
+      <section className="sentiment-bridge-section"><div><p className="eyebrow">NEWS → MARKET IMPACT → SENTIMENT</p><h2>Linked context unavailable</h2></div><div className="sentiment-bridge-flow"><span>News source</span><b>→</b><span>Affected market</span><b>→</b><span>Sentiment response</span></div><small className="sentiment-bridge-status">Waiting for linked data</small></section>
       <section className="sentiment-opinion-section"><div className="sentiment-section-heading"><div><p className="eyebrow">EXPERT VIEW</p><h2>What are the experts thinking?</h2><p>Research-style entries with source, timing, asset, and directional stance visible.</p></div></div><div className="sentiment-filters"><label htmlFor="sentiment-search">Search<input id="sentiment-search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Asset, analyst, source or view" /></label><label htmlFor="sentiment-bias">Bias<select id="sentiment-bias" value={selectedBias} onChange={(event) => setSelectedBias(event.target.value)}><option>All</option><option>Bullish</option><option>Neutral</option><option>Bearish</option></select></label><button type="button" onClick={() => { setSearch(""); setSelectedBias("All"); }}>Reset</button><span>{filteredOpinions.length} of {expertOpinions.length} views</span></div>{filteredOpinions.length ? <div className="sentiment-research-list">{filteredOpinions.map((opinion) => <article className="sentiment-research-item" key={opinion.id}><div className="sentiment-research-source"><strong>{opinion.source}</strong><small>{opinion.sourceType}</small></div><div className="sentiment-research-headline"><h3>{opinion.reasoning}</h3><SentimentBadge bias={opinion.bias} /></div><div className="sentiment-research-meta"><span>{opinion.analyst}</span><span>{opinion.asset}</span><span>{opinion.publicationDate} · {opinion.publicationTime}</span></div><a href={opinion.sourceLink} target="_blank" rel="noopener noreferrer">Read source <span aria-hidden="true">→</span></a></article>)}</div> : <div className="sentiment-inline-empty">No opinions match the current filters.</div>}</section>
-      <section className="sentiment-context-note"><div><p className="eyebrow">TRADING CONTEXT</p><h2>Sentiment is context, not a signal.</h2><p>Use attributed views to frame a setup, then validate price structure, risk, and your own strategy independently.</p></div><span className="market-note-status">SOURCE · TIMESTAMP · BIAS</span></section>
+      <section className="sentiment-context-note"><div><p className="eyebrow">TRADING CONTEXT</p><h2>Context, not a signal.</h2><p>Validate sentiment with price structure, risk, and your own strategy.</p></div><span className="market-note-status">SOURCE · TIMESTAMP · BIAS</span></section>
     </div>
   );
 }

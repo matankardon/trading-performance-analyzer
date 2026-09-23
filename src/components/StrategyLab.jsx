@@ -1,11 +1,17 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "../supabaseClient";
 import {
   createBacktestRequest,
   createStrategyDraft,
-  createStrategyVersion,
   strategyConditionCatalog,
   strategyStatuses,
 } from "../services/strategyModels";
+import {
+  dbToStrategy,
+  dbToStrategyVersion,
+  strategyToDb,
+  strategyVersionToDb,
+} from "../models/strategy";
 import "./StrategyLab.css";
 
 function LabHeader({ view, onViewChange }) {
@@ -67,12 +73,55 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
   );
 }
 
-function StrategyLab({ initialView = "library", strategies: initialStrategies = [], onStrategiesChange }) {
+function StrategyLab({ initialView = "library", userId, onStrategiesChange }) {
   const [view, setView] = useState(initialView);
-  const [strategies, setStrategies] = useState(initialStrategies);
+  const [strategies, setStrategies] = useState([]);
   const [draft, setDraft] = useState(createStrategyDraft());
   const [request, setRequest] = useState(createBacktestRequest());
   const [selectedStrategy, setSelectedStrategy] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadStrategies() {
+      if (!userId) {
+        setStrategies([]);
+        return;
+      }
+
+      const { data: strategyRows, error: strategyError } = await supabase
+        .from("strategies")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
+
+      if (strategyError) {
+        console.error("Could not load strategies:", strategyError);
+        return;
+      }
+
+      const ids = (strategyRows || []).map((strategy) => strategy.id);
+      const { data: versionRows, error: versionError } = ids.length
+        ? await supabase.from("strategy_versions").select("*").in("strategy_id", ids).order("version_number", { ascending: false })
+        : { data: [], error: null };
+
+      if (versionError) {
+        console.error("Could not load strategy versions:", versionError);
+        return;
+      }
+
+      if (!active) return;
+      const nextStrategies = (strategyRows || []).map((strategy) => dbToStrategy(
+        strategy,
+        (versionRows || []).filter((version) => version.strategy_id === strategy.id).map(dbToStrategyVersion),
+      ));
+      setStrategies(nextStrategies);
+      onStrategiesChange?.(nextStrategies);
+    }
+
+    loadStrategies();
+    return () => { active = false; };
+  }, [onStrategiesChange, userId]);
 
   function createStrategy() {
     setSelectedStrategy(null);
@@ -86,13 +135,39 @@ function StrategyLab({ initialView = "library", strategies: initialStrategies = 
     setView("builder");
   }
 
-  function saveVersion() {
+  async function saveVersion() {
     if (!draft.name.trim()) return;
-    const existing = strategies.find((strategy) => strategy.name === draft.name.trim());
+    if (!userId) return;
+
+    const existing = selectedStrategy || strategies.find((strategy) => strategy.name === draft.name.trim());
+    const strategyPayload = strategyToDb({ ...draft, name: draft.name.trim(), userId });
+    const strategyResult = existing
+      ? await supabase.from("strategies").update(strategyPayload).eq("id", existing.id).eq("user_id", userId).select().single()
+      : await supabase.from("strategies").insert(strategyPayload).select().single();
+
+    if (strategyResult.error) {
+      console.error("Could not save strategy:", strategyResult.error);
+      return;
+    }
+
+    const strategyRow = strategyResult.data;
     const nextVersion = existing ? existing.versions.length + 1 : 1;
-    const version = createStrategyVersion({ ...draft, name: draft.name.trim() }, nextVersion);
-    const strategy = existing ? { ...existing, ...draft, name: draft.name.trim(), versions: [...existing.versions, version] } : { ...draft, name: draft.name.trim(), id: version.id.split("-v")[0], versions: [version] };
-    const nextStrategies = existing ? strategies.map((item) => item.id === existing.id ? strategy : item) : [...strategies, strategy];
+    const versionResult = await supabase.from("strategy_versions").insert(strategyVersionToDb({
+      ...draft,
+      strategyId: strategyRow.id,
+      version: nextVersion,
+    })).select().single();
+
+    if (versionResult.error) {
+      console.error("Could not save strategy version:", versionResult.error);
+      return;
+    }
+
+    const version = dbToStrategyVersion(versionResult.data);
+    const strategy = dbToStrategy(strategyRow, [...(existing?.versions || []), version]);
+    const nextStrategies = existing
+      ? strategies.map((item) => item.id === existing.id ? strategy : item)
+      : [strategy, ...strategies];
     setStrategies(nextStrategies);
     onStrategiesChange?.(nextStrategies);
     setSelectedStrategy(strategy);

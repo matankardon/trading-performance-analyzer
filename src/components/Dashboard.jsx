@@ -8,7 +8,7 @@ import {
   Tooltip,
 } from "recharts";
 
-function Dashboard({ trades = [], loadingTrades = false, onAddTrade }) {
+function Dashboard({ trades = [], loadingTrades = false }) {
   const totalTrades = trades.length;
 
   const winningTrades = trades.filter(
@@ -54,8 +54,8 @@ function Dashboard({ trades = [], loadingTrades = false, onAddTrade }) {
   */
 
   const sortedTrades = [...trades].sort((a, b) => {
-    const dateA = new Date(a.date || a.created_at || 0);
-    const dateB = new Date(b.date || b.created_at || 0);
+    const dateA = new Date(a.date || a.createdAt || 0);
+    const dateB = new Date(b.date || b.createdAt || 0);
 
     return dateA - dateB;
   });
@@ -87,8 +87,8 @@ function Dashboard({ trades = [], loadingTrades = false, onAddTrade }) {
 
   const recentTrades = [...trades]
     .sort((a, b) => {
-      const dateA = new Date(a.created_at || a.date || 0);
-      const dateB = new Date(b.created_at || b.date || 0);
+      const dateA = new Date(a.createdAt || a.date || 0);
+      const dateB = new Date(b.createdAt || b.date || 0);
 
       return dateB - dateA;
     })
@@ -163,12 +163,6 @@ function Dashboard({ trades = [], loadingTrades = false, onAddTrade }) {
           <h1>Dashboard</h1>
         </div>
 
-        <button
-          className="add-trade-btn"
-          onClick={onAddTrade}
-        >
-          + Add Trade
-        </button>
       </header>
 
       {/* =========================================
@@ -312,8 +306,8 @@ function Dashboard({ trades = [], loadingTrades = false, onAddTrade }) {
                   <Area
                     type="monotone"
                     dataKey="pnl"
-                    stroke="#111827"
-                    fill="#e9edf2"
+                    stroke="var(--color-trading)"
+                    fill="var(--color-bg-elevated)"
                     strokeWidth={2}
                   />
                 </AreaChart>
@@ -345,12 +339,6 @@ function Dashboard({ trades = [], loadingTrades = false, onAddTrade }) {
                 Your latest trades will appear here.
               </p>
 
-              <button
-                className="secondary-btn"
-                onClick={onAddTrade}
-              >
-                Add Your First Trade
-              </button>
             </div>
           ) : (
             <div className="recent-trades">
