@@ -56,6 +56,8 @@ describe("strategy models", () => {
       session: "",
       riskPerTrade: "",
       startingBalance: "",
+      stopLossPct: "2",
+      takeProfitPct: "4",
     });
   });
 });

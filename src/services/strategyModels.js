@@ -49,5 +49,7 @@ export function createBacktestRequest() {
     session: "",
     riskPerTrade: "",
     startingBalance: "",
+    stopLossPct: "2",
+    takeProfitPct: "4",
   };
 }

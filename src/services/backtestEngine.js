@@ -48,11 +48,31 @@ function calculateExit(position, bar) {
   return null;
 }
 
-function closePosition(position, price, timestamp, reason) {
+function formatDuration(durationMs) {
+  if (!Number.isFinite(durationMs)) return "unknown";
+  if (durationMs < 1000) return `${durationMs}ms`;
+
+  const totalSeconds = Math.floor(durationMs / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [
+    days ? `${days}d` : "",
+    hours ? `${hours}h` : "",
+    minutes ? `${minutes}m` : "",
+    seconds ? `${seconds}s` : "",
+  ].filter(Boolean).join(" ");
+}
+
+function closePosition(position, price, timestamp, reason, exitIndex) {
   const priceMove = position.direction === "long"
     ? price - position.entryPrice
     : position.entryPrice - price;
   const pnl = priceMove * position.positionSize;
+  const calendarTimeHeldMs = Number.isFinite(position.entryTimestamp) && Number.isFinite(timestamp)
+    ? timestamp - position.entryTimestamp
+    : NaN;
 
   return {
     direction: position.direction,
@@ -62,8 +82,13 @@ function closePosition(position, price, timestamp, reason) {
     takeProfit: position.takeProfit,
     positionSize: position.positionSize,
     pnl,
+    entryIndex: position.entryIndex,
+    exitIndex,
+    barsHeld: exitIndex - position.entryIndex,
     entryTimestamp: position.entryTimestamp,
     exitTimestamp: timestamp,
+    calendarTimeHeldMs,
+    calendarTimeHeld: formatDuration(calendarTimeHeldMs),
     exitReason: reason,
   };
 }
@@ -176,6 +201,7 @@ export function runBacktest({
         stopLoss,
         takeProfit,
         positionSize: riskCapital / stopDistance,
+        entryIndex: index,
         entryTimestamp: bar.timestamp,
       };
       pendingDirection = null;
@@ -184,8 +210,9 @@ export function runBacktest({
     if (position) {
       const exit = calculateExit(position, bar);
       if (exit) {
-        const trade = closePosition(position, exit.price, bar.timestamp, exit.reason);
+        const trade = closePosition(position, exit.price, bar.timestamp, exit.reason, index);
         trades.push(trade);
+        if (debugSignals) console.info("[backtest] recorded trade", trade);
         balance += trade.pnl;
         position = null;
       }
@@ -245,8 +272,9 @@ export function runBacktest({
 
   if (position) {
     const lastBar = bars[bars.length - 1];
-    const trade = closePosition(position, lastBar.close, lastBar.timestamp, "end_of_data");
+    const trade = closePosition(position, lastBar.close, lastBar.timestamp, "end_of_data", bars.length - 1);
     trades.push(trade);
+    if (debugSignals) console.info("[backtest] recorded trade", trade);
     balance += trade.pnl;
     equityCurve[equityCurve.length - 1].equity = balance;
   }

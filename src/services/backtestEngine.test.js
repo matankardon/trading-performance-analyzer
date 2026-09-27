@@ -26,6 +26,11 @@ describe("backtest engine", () => {
       entryPrice: 105,
       exitPrice: 110.25,
       exitReason: "take_profit",
+      entryIndex: 1,
+      exitIndex: 2,
+      barsHeld: 1,
+      calendarTimeHeldMs: 1,
+      calendarTimeHeld: "1ms",
     });
     expect(result.trades[0].positionSize).toBeCloseTo(9.5238095238, 6);
     expect(result.trades[0].pnl).toBeCloseTo(50, 6);
@@ -70,6 +75,9 @@ describe("backtest engine", () => {
     });
 
     expect(result.trades[0]).toMatchObject({ exitPrice: 95, exitReason: "end_of_data" });
+    expect(result.trades[0].barsHeld).toBe(0);
+    expect(result.trades[0].calendarTimeHeldMs).toBe(0);
+    expect(result.trades[0].calendarTimeHeld).toBe("0ms");
     expect(result.netPnl).toBeCloseTo(50, 6);
     expect(result.winRate).toBe(100);
   });
