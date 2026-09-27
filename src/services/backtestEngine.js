@@ -93,6 +93,11 @@ function buildMetrics(trades, equityCurve) {
   };
 }
 
+function getSignalDirections(entryRule, bars, index, direction) {
+  const directions = direction === "both" ? ["long", "short"] : [direction];
+  return directions.filter((signalDirection) => entryRule({ bars, index, direction: signalDirection }));
+}
+
 /**
  * Placeholder entry rule for this engine stage.
  * A crossover signal is evaluated on a completed bar and executed at the
@@ -128,6 +133,7 @@ export function runBacktest({
   riskPerTrade,
   startingBalance,
   direction = "long",
+  debugSignals = false,
 }) {
   validateBars(bars);
   validatePercentage(stopLossPct, "stopLossPct");
@@ -152,6 +158,10 @@ export function runBacktest({
   let balance = startingBalance;
   let position = null;
   let pendingDirection = null;
+  let rawSignalCount = 0;
+  let queuedSignalCount = 0;
+  let skippedWhilePositionOpen = 0;
+  let signalsWithoutNextBar = 0;
 
   bars.forEach((bar, index) => {
     if (pendingDirection && !position) {
@@ -181,18 +191,49 @@ export function runBacktest({
       }
     }
 
-    if (!position && index < bars.length - 1) {
-      let signalDirection = direction;
-      let shouldEnter = false;
-      if (direction === "both") {
-        shouldEnter = entryRule({ bars, index, direction: "long" });
-        signalDirection = shouldEnter ? "long" : "short";
-        if (!shouldEnter) shouldEnter = entryRule({ bars, index, direction: "short" });
-      } else {
-        shouldEnter = entryRule({ bars, index, direction });
-      }
-      if (shouldEnter) {
-        pendingDirection = signalDirection;
+    if (!position || debugSignals) {
+      const canEnterOnNextBar = index < bars.length - 1;
+      const signalDirections = canEnterOnNextBar || debugSignals
+        ? getSignalDirections(entryRule, bars, index, direction)
+        : [];
+
+      if (debugSignals) rawSignalCount += signalDirections.length;
+
+      if (position && signalDirections.length > 0) {
+        if (debugSignals) {
+          skippedWhilePositionOpen += signalDirections.length;
+          signalDirections.forEach((signalDirection) => {
+            console.info("[backtest] raw entry signal", {
+              index,
+              timestamp: bar.timestamp,
+              direction: signalDirection,
+              disposition: "ignored_position_open",
+            });
+          });
+        }
+      } else if (signalDirections.length > 0 && canEnterOnNextBar) {
+        pendingDirection = signalDirections[0];
+        if (debugSignals) {
+          queuedSignalCount += 1;
+          signalDirections.forEach((signalDirection, signalIndex) => {
+            console.info("[backtest] raw entry signal", {
+              index,
+              timestamp: bar.timestamp,
+              direction: signalDirection,
+              disposition: signalIndex === 0 ? "queued_next_bar" : "direction_priority",
+            });
+          });
+        }
+      } else if (signalDirections.length > 0 && debugSignals) {
+        signalsWithoutNextBar += signalDirections.length;
+        signalDirections.forEach((signalDirection) => {
+          console.info("[backtest] raw entry signal", {
+            index,
+            timestamp: bar.timestamp,
+            direction: signalDirection,
+            disposition: "no_next_bar",
+          });
+        });
       }
     }
 
@@ -208,6 +249,16 @@ export function runBacktest({
     trades.push(trade);
     balance += trade.pnl;
     equityCurve[equityCurve.length - 1].equity = balance;
+  }
+
+  if (debugSignals) {
+    console.info("[backtest] signal diagnostics", {
+      rawSignalCount,
+      queuedSignalCount,
+      skippedWhilePositionOpen,
+      signalsWithoutNextBar,
+      tradesRecorded: trades.length,
+    });
   }
 
   return {

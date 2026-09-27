@@ -193,6 +193,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
         riskPerTrade,
         startingBalance,
         direction: getStrategyDirection(selectedStrategy?.direction),
+        debugSignals: new URLSearchParams(window.location.search).get("debugBacktestSignals") === "1",
       });
       setBars(fetchedBars);
       setBacktestResult(result);

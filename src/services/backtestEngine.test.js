@@ -96,6 +96,38 @@ describe("backtest engine", () => {
     ]);
   });
 
+  it("reports raw signals separately from signals suppressed by an open position", () => {
+    const logSpy = vi.spyOn(console, "info").mockImplementation(() => {});
+    try {
+      const result = runBacktest({
+        bars: [
+          bar(1, 100, 100, 100, 100),
+          bar(2, 100, 101, 99, 101),
+          bar(3, 101, 103, 100, 102),
+        ],
+        entryRule: () => true,
+        stopLossPct: 0.1,
+        takeProfitPct: 0.2,
+        riskPerTrade: 0.01,
+        startingBalance: 1000,
+        direction: "long",
+        debugSignals: true,
+      });
+      const [, diagnostics] = logSpy.mock.calls.find(([message]) => message === "[backtest] signal diagnostics");
+
+      expect(result.totalTrades).toBe(1);
+      expect(diagnostics).toEqual({
+        rawSignalCount: 3,
+        queuedSignalCount: 1,
+        skippedWhilePositionOpen: 2,
+        signalsWithoutNextBar: 0,
+        tradesRecorded: 1,
+      });
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
   it("emits a deterministic SMA crossover signal without using future bars", () => {
     const entryRule = smaCrossover(2, 3);
     const bars = [
