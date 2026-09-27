@@ -1,8 +1,14 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
-import { parseTimeframe, supportedHistoricalTimeframes } from "../_shared/timeframe.ts";
+import {
+  buildMassiveAggregateUrl,
+  parseTimeframe,
+  supportedHistoricalTimeframes,
+} from "../_shared/timeframe.ts";
 
 const MASSIVE_BASE_URL = "https://api.massive.com";
+const MAX_RESULT_PAGES = 10;
+const PAGE_REQUEST_DELAY_MS = 250;
 
 function jsonResponse(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), {
@@ -106,46 +112,99 @@ Deno.serve(async (request) => {
     return jsonResponse({ error: "INVALID_REQUEST", detail: "startDate must not be after endDate." }, 400);
   }
 
-  const url = new URL(`${MASSIVE_BASE_URL}/v2/aggs/ticker/${encodeURIComponent(asset)}/range/${aggregation.multiplier}/${aggregation.timespan}/${startDate}/${endDate}`);
-  url.searchParams.set("adjusted", "true");
-  url.searchParams.set("sort", "asc");
+  const initialUrl = buildMassiveAggregateUrl(asset, timeframe, startDate, endDate);
+  let pageUrl: URL | null = initialUrl;
+  let pageCount = 0;
+  const rawResults: unknown[] = [];
 
-  let response: Response;
-  try {
-    response = await fetch(url, {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
+  while (pageUrl && pageCount < MAX_RESULT_PAGES) {
+    if (pageUrl.origin !== MASSIVE_BASE_URL) {
+      return jsonResponse({ error: "MASSIVE_INVALID_PAGINATION", detail: "Massive returned a pagination URL outside api.massive.com." }, 502);
+    }
+
+    pageCount += 1;
+    const requestUrl = pageUrl.toString();
+    console.info("[historical-data] Massive request", {
+      page: pageCount,
+      timeframe,
+      multiplier: aggregation.multiplier,
+      timespan: aggregation.timespan,
+      url: requestUrl,
     });
-  } catch (error) {
-    return jsonResponse({ error: "MASSIVE_UNREACHABLE", detail: error instanceof Error ? error.message : "Could not reach Massive." }, 502);
+
+    let response: Response;
+    try {
+      response = await fetch(requestUrl, {
+        headers: { Authorization: `Bearer ${apiKey}` },
+      });
+    } catch (error) {
+      return jsonResponse({ error: "MASSIVE_UNREACHABLE", detail: error instanceof Error ? error.message : "Could not reach Massive." }, 502);
+    }
+
+    if (!response.ok) {
+      const detail = await readUpstreamError(response);
+      const code = response.status === 401 || response.status === 403
+        ? "MASSIVE_AUTH_FAILED"
+        : response.status === 429
+          ? "MASSIVE_RATE_LIMITED"
+          : response.status === 404
+            ? "MASSIVE_SYMBOL_NOT_FOUND"
+            : "MASSIVE_REQUEST_FAILED";
+      return jsonResponse({ error: code, detail, upstreamStatus: response.status }, response.status === 429 ? 429 : 502);
+    }
+
+    let payload: unknown;
+    try {
+      payload = await response.json();
+    } catch {
+      return jsonResponse({ error: "MASSIVE_INVALID_RESPONSE", detail: "Massive returned a non-JSON response." }, 502);
+    }
+
+    if (!isRecord(payload) || payload.status === "ERROR") {
+      const detail = isRecord(payload) && typeof payload.error === "string" ? payload.error : "Massive returned an error response.";
+      return jsonResponse({ error: "MASSIVE_REQUEST_FAILED", detail }, 502);
+    }
+
+    const pageResults = Array.isArray(payload.results) ? payload.results : [];
+    rawResults.push(...pageResults);
+    console.info("[historical-data] Massive response", {
+      page: pageCount,
+      queryCount: payload.queryCount ?? null,
+      resultsCount: payload.resultsCount ?? pageResults.length,
+      returnedResults: pageResults.length,
+      firstTimestamp: isRecord(pageResults[0]) ? pageResults[0].t ?? null : null,
+      lastTimestamp: isRecord(pageResults[pageResults.length - 1])
+        ? pageResults[pageResults.length - 1].t ?? null
+        : null,
+      hasNextPage: typeof payload.next_url === "string",
+    });
+
+    const nextUrl = typeof payload.next_url === "string" ? payload.next_url : "";
+    if (!nextUrl) {
+      pageUrl = null;
+      continue;
+    }
+
+    try {
+      pageUrl = new URL(nextUrl);
+    } catch {
+      return jsonResponse({ error: "MASSIVE_INVALID_PAGINATION", detail: "Massive returned an invalid pagination URL." }, 502);
+    }
+
+    if (pageCount < MAX_RESULT_PAGES) {
+      await new Promise((resolve) => setTimeout(resolve, PAGE_REQUEST_DELAY_MS));
+    }
   }
 
-  if (!response.ok) {
-    const detail = await readUpstreamError(response);
-    const code = response.status === 401 || response.status === 403
-      ? "MASSIVE_AUTH_FAILED"
-      : response.status === 429
-        ? "MASSIVE_RATE_LIMITED"
-        : response.status === 404
-          ? "MASSIVE_SYMBOL_NOT_FOUND"
-          : "MASSIVE_REQUEST_FAILED";
-    return jsonResponse({ error: code, detail, upstreamStatus: response.status }, response.status === 429 ? 429 : response.status === 401 || response.status === 403 ? 502 : 502);
+  if (pageUrl) {
+    return jsonResponse({
+      error: "HISTORICAL_RANGE_TOO_LARGE",
+      detail: `Historical results exceeded the ${MAX_RESULT_PAGES}-page limit. Narrow the date range or select a coarser timeframe.`,
+      pagesFetched: pageCount,
+      barsFetched: rawResults.length,
+    }, 413);
   }
 
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    return jsonResponse({ error: "MASSIVE_INVALID_RESPONSE", detail: "Massive returned a non-JSON response." }, 502);
-  }
-
-  if (!isRecord(payload) || payload.status === "ERROR") {
-    const detail = isRecord(payload) && typeof payload.error === "string" ? payload.error : "Massive returned an error response.";
-    return jsonResponse({ error: "MASSIVE_REQUEST_FAILED", detail }, 502);
-  }
-
-  const rawResults = isRecord(payload) && Array.isArray(payload.results) ? payload.results : [];
   const bars = rawResults.flatMap((bar) => {
     if (!isRecord(bar) || ["t", "o", "h", "l", "c", "v"].some((field) => typeof bar[field] !== "number")) {
       return [];

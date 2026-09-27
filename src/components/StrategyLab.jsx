@@ -29,6 +29,29 @@ import "./StrategyLab.css";
 
 const backtestAssets = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "SPY", "QQQ"];
 const backtestSessions = ["All sessions", "New York", "London", "Asia", "Overlap"];
+const recentBacktestAssetsStorageKey = "tradeCatalystRecentBacktestAssets";
+
+function loadRecentBacktestAssets() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(recentBacktestAssetsStorageKey) || "[]");
+    return Array.isArray(stored)
+      ? stored.filter((asset) => typeof asset === "string").map((asset) => asset.toUpperCase()).slice(0, 6)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentBacktestAsset(asset, previousAssets) {
+  const normalizedAsset = asset.trim().toUpperCase();
+  const nextAssets = [normalizedAsset, ...previousAssets.filter((previous) => previous !== normalizedAsset)].slice(0, 6);
+  try {
+    localStorage.setItem(recentBacktestAssetsStorageKey, JSON.stringify(nextAssets));
+  } catch {
+    // Recent suggestions are optional when browser storage is unavailable.
+  }
+  return nextAssets;
+}
 
 function LabHeader({ view, onViewChange }) {
   const tabs = [["library", "Strategy Library"], ["builder", "Strategy Builder"], ["backtesting", "Backtesting"], ["compare", "Version Compare"]];
@@ -105,9 +128,18 @@ function formatMetric(value) {
   return value.toFixed(2);
 }
 
-function formatChartTimestamp(value) {
+function formatChartTimestamp(value, timeframe) {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleDateString();
+  if (Number.isNaN(date.getTime())) return String(value);
+  if (/\d+[mh]$/.test(timeframe)) {
+    return new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date);
+  }
+  return date.toLocaleDateString();
 }
 
 function getStrategyDirection(direction) {
@@ -123,6 +155,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
   const [backtestResult, setBacktestResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [recentAssets, setRecentAssets] = useState(loadRecentBacktestAssets);
   const requestInProgress = useRef(false);
   const selectedStrategy = strategies.find((strategy) => strategy.id === request.strategyId);
   const versions = selectedStrategy?.versions || [];
@@ -140,7 +173,9 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       }
       const riskPerTrade = parseRiskPerTrade(request.riskPerTrade);
       const startingBalance = parseStartingBalance(request.startingBalance);
-      const fetchedBars = await fetchHistoricalBars(request.asset, request.timeframe, request.startDate, request.endDate);
+      const asset = request.asset.trim().toUpperCase();
+      if (!asset) throw new Error("Enter an asset ticker before running the backtest.");
+      const fetchedBars = await fetchHistoricalBars(asset, request.timeframe, request.startDate, request.endDate);
       const conditions = selectedVersion.conditions || {};
       const entryRule = ictEntryRule(fetchedBars, {
         requireSweep: Boolean(conditions.liquiditySweep),
@@ -161,6 +196,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       });
       setBars(fetchedBars);
       setBacktestResult(result);
+      setRecentAssets((previous) => saveRecentBacktestAsset(asset, previous));
     } catch (fetchError) {
       setBars(null);
       setBacktestResult(null);
@@ -180,7 +216,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       <div className="backtest-request-grid">
         <label>Strategy<select value={request.strategyId} onChange={(event) => update("strategyId", event.target.value)}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}</select></label>
         <label>Strategy version<select value={request.versionId} onChange={(event) => update("versionId", event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{versions.map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label>
-        <label>Asset<select value={request.asset} onChange={(event) => update("asset", event.target.value)}><option value="">Select asset</option>{backtestAssets.map((asset) => <option value={asset} key={asset}>{asset}</option>)}</select></label>
+        <label>Asset<input list="recent-backtest-assets" value={request.asset} onChange={(event) => update("asset", event.target.value.toUpperCase())} placeholder="Ticker, e.g. AAPL" autoComplete="off" /><datalist id="recent-backtest-assets">{recentAssets.map((asset) => <option value={asset} key={asset} />)}{backtestAssets.map((asset) => <option value={asset} key={`common-${asset}`} />)}</datalist></label>
         <label>Timeframe<select value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)}><option value="">Select timeframe</option>{supportedHistoricalTimeframes.map(({ value }) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label>Start date<input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
         <label>End date<input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>
@@ -190,7 +226,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       </div>
       <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={handleRunBacktest} disabled={isLoading}>{isLoading ? "Running backtest..." : "Run backtest"}</button><span>Uses real historical bars and the selected version&apos;s enabled conditions.</span></div>
       {error && <p role="alert" className="strategy-error-message">{error}</p>}
-      <div className="backtest-results-placeholder"><p className="eyebrow">BACKTEST RESULTS</p><h3>{backtestResult ? "Execution summary" : "Results will appear here"}</h3><p className="backtest-disclaimer">Entries use the selected version&apos;s enabled liquidity sweep, MSS, FVG, order-block, and stochastic conditions. All enabled gates must pass; when both FVG and order block are enabled, either matching directional-zone retest satisfies that zone gate. This is our own rule-based confluence implementation of ICT concepts; detection is based on available OHLC bars and should not be treated as infallible ground truth. Displacement detection is not implemented, so a version requiring it cannot be run.</p>{backtestResult ? <><div className="backtest-result-labels"><span>Total trades<strong>{backtestResult.totalTrades}</strong></span><span>Win rate<strong>{formatMetric(backtestResult.winRate)}%</strong></span><span>Net P&amp;L<strong>{formatCurrency(backtestResult.netPnl)}</strong></span><span>Profit factor<strong>{formatMetric(backtestResult.profitFactor)}</strong></span><span>Max drawdown<strong>{formatCurrency(backtestResult.maxDrawdown)}</strong></span><span>Expectancy<strong>{formatCurrency(backtestResult.expectancy)}</strong></span></div><div className="backtest-equity-chart"><p className="eyebrow">EQUITY CURVE</p><ResponsiveContainer width="100%" height={240}><LineChart data={backtestResult.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.14)" /><XAxis dataKey="timestamp" tickFormatter={formatChartTimestamp} stroke="#7f94a8" tick={{ fontSize: 10 }} /><YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={formatChartTimestamp} /><Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></> : <small>Run a test to calculate metrics from the fetched historical bars.</small>}</div>
+      <div className="backtest-results-placeholder"><p className="eyebrow">BACKTEST RESULTS</p><h3>{backtestResult ? "Execution summary" : "Results will appear here"}</h3><p className="backtest-disclaimer">Entries use the selected version&apos;s enabled liquidity sweep, MSS, FVG, order-block, and stochastic conditions. All enabled gates must pass; when both FVG and order block are enabled, either matching directional-zone retest satisfies that zone gate. This is our own rule-based confluence implementation of ICT concepts; detection is based on available OHLC bars and should not be treated as infallible ground truth. Displacement detection is not implemented, so a version requiring it cannot be run.</p>{backtestResult ? <><div className="backtest-result-labels"><span>Total trades<strong>{backtestResult.totalTrades}</strong></span><span>Win rate<strong>{formatMetric(backtestResult.winRate)}%</strong></span><span>Net P&amp;L<strong>{formatCurrency(backtestResult.netPnl)}</strong></span><span>Profit factor<strong>{formatMetric(backtestResult.profitFactor)}</strong></span><span>Max drawdown<strong>{formatCurrency(backtestResult.maxDrawdown)}</strong></span><span>Expectancy<strong>{formatCurrency(backtestResult.expectancy)}</strong></span></div><div className="backtest-equity-chart"><p className="eyebrow">EQUITY CURVE</p><ResponsiveContainer width="100%" height={240}><LineChart data={backtestResult.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.14)" /><XAxis type="number" dataKey="timestamp" scale="time" domain={["dataMin", "dataMax"]} tickCount={6} minTickGap={24} tickFormatter={(value) => formatChartTimestamp(value, request.timeframe)} stroke="#7f94a8" tick={{ fontSize: 10 }} /><YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={(value) => formatChartTimestamp(value, request.timeframe)} /><Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></> : <small>Run a test to calculate metrics from the fetched historical bars.</small>}</div>
     </section>
   );
 }

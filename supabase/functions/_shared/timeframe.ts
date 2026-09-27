@@ -8,6 +8,8 @@ export const supportedHistoricalTimeframes = [
   { value: "1w", multiplier: 1, timespan: "week" },
 ] as const;
 
+export const massiveAggregateResultLimit = 50000;
+
 export function parseTimeframe(timeframe: string): { multiplier: number; timespan: string } {
   const match = supportedHistoricalTimeframes.find(({ value }) => value === timeframe);
   if (!match) {
@@ -16,4 +18,20 @@ export function parseTimeframe(timeframe: string): { multiplier: number; timespa
   }
 
   return { multiplier: match.multiplier, timespan: match.timespan };
+}
+
+export function buildMassiveAggregateUrl(
+  asset: string,
+  timeframe: string,
+  startDate: string,
+  endDate: string,
+): URL {
+  const { multiplier, timespan } = parseTimeframe(timeframe);
+  const url = new URL(
+    `https://api.massive.com/v2/aggs/ticker/${encodeURIComponent(asset)}/range/${multiplier}/${timespan}/${startDate}/${endDate}`,
+  );
+  url.searchParams.set("adjusted", "true");
+  url.searchParams.set("sort", "asc");
+  url.searchParams.set("limit", String(massiveAggregateResultLimit));
+  return url;
 }

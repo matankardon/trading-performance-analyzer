@@ -1,4 +1,9 @@
-import { parseTimeframe, supportedHistoricalTimeframes } from "../../supabase/functions/_shared/timeframe";
+import {
+  buildMassiveAggregateUrl,
+  massiveAggregateResultLimit,
+  parseTimeframe,
+  supportedHistoricalTimeframes,
+} from "../../supabase/functions/_shared/timeframe";
 
 describe("historical data timeframe mapping", () => {
   it.each([
@@ -17,6 +22,15 @@ describe("historical data timeframe mapping", () => {
     expect(supportedHistoricalTimeframes.map(({ value }) => value)).toEqual([
       "1m", "5m", "15m", "1h", "4h", "1d", "1w",
     ]);
+  });
+
+  it("constructs the exact Massive 5m request URL and requests the documented maximum page size", () => {
+    const url = buildMassiveAggregateUrl("AAPL", "5m", "2025-01-01", "2026-08-23");
+
+    expect(url.toString()).toBe(
+      "https://api.massive.com/v2/aggs/ticker/AAPL/range/5/minute/2025-01-01/2026-08-23?adjusted=true&sort=asc&limit=50000",
+    );
+    expect(massiveAggregateResultLimit).toBe(50000);
   });
 
   it.each(["5 min", "5M", "1mo", "60m", "", "5 minutes"]) (
