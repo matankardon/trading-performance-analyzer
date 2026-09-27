@@ -1,5 +1,6 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { parseTimeframe, supportedHistoricalTimeframes } from "../_shared/timeframe.ts";
 
 const MASSIVE_BASE_URL = "https://api.massive.com";
 
@@ -32,27 +33,6 @@ async function authenticate(request: Request): Promise<boolean> {
   });
   const { data, error } = await supabase.auth.getUser(token);
   return !error && Boolean(data.user);
-}
-
-function parseTimeframe(timeframe: string): { multiplier: number; timespan: string } | null {
-  const normalized = timeframe.trim().toLowerCase();
-  const match = normalized.match(/^(\d+)\s*(m|min|h|hour|d|day|w|week|mo|month)$/);
-  if (!match) {
-    return null;
-  }
-
-  const multiplier = Number(match[1]);
-  const unit = match[2];
-  if (!Number.isInteger(multiplier) || multiplier < 1) {
-    return null;
-  }
-
-  if (unit === "m" || unit === "min") return { multiplier, timespan: "minute" };
-  if (unit === "h" || unit === "hour") return { multiplier, timespan: "hour" };
-  if (unit === "d" || unit === "day") return { multiplier, timespan: "day" };
-  if (unit === "w" || unit === "week") return { multiplier, timespan: "week" };
-  if (unit === "mo" || unit === "month") return { multiplier, timespan: "month" };
-  return null;
 }
 
 function isDate(value: string): boolean {
@@ -105,12 +85,20 @@ Deno.serve(async (request) => {
   const timeframe = typeof body.timeframe === "string" ? body.timeframe : "";
   const startDate = typeof body.startDate === "string" ? body.startDate : "";
   const endDate = typeof body.endDate === "string" ? body.endDate : "";
-  const aggregation = parseTimeframe(timeframe);
+  let aggregation: { multiplier: number; timespan: string };
+  try {
+    aggregation = parseTimeframe(timeframe);
+  } catch (error) {
+    return jsonResponse({
+      error: "INVALID_TIMEFRAME",
+      detail: error instanceof Error ? error.message : "The requested timeframe is not supported.",
+    }, 400);
+  }
 
-  if (!asset || !aggregation || !isDate(startDate) || !isDate(endDate)) {
+  if (!asset || !isDate(startDate) || !isDate(endDate)) {
     return jsonResponse({
       error: "INVALID_REQUEST",
-      detail: "asset, timeframe, startDate, and endDate are required. timeframe must look like 1m, 5m, 1h, 1d, 1w, or 1mo; dates must be YYYY-MM-DD.",
+      detail: `asset, timeframe, startDate, and endDate are required. timeframe must be one of ${supportedHistoricalTimeframes.map(({ value }) => value).join(", ")}; dates must be YYYY-MM-DD.`,
     }, 400);
   }
 
