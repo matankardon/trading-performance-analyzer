@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -119,12 +119,15 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
   const [backtestResult, setBacktestResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const requestInProgress = useRef(false);
   const selectedStrategy = strategies.find((strategy) => strategy.id === request.strategyId);
   const versions = selectedStrategy?.versions || [];
   const selectedVersion = versions.find((version) => version.id === request.versionId);
   const update = (field, value) => setRequest((previous) => ({ ...previous, [field]: value }));
 
-  async function runBacktest() {
+  async function handleRunBacktest() {
+    if (requestInProgress.current) return;
+    requestInProgress.current = true;
     setIsLoading(true);
     setError("");
     try {
@@ -159,6 +162,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       setBacktestResult(null);
       setError(fetchError.message);
     } finally {
+      requestInProgress.current = false;
       setIsLoading(false);
     }
   }
@@ -170,7 +174,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
     <section className="strategy-lab-section backtest-section">
       <div className="strategy-section-heading"><div><p className="eyebrow">BACKTESTING INTERFACE</p><h2>Test a strategy version</h2><p>Run a deterministic test over real historical bars using the selected version&apos;s enabled, implemented entry conditions.</p></div><span className="strategy-data-status">{status}</span></div>
       <div className="backtest-request-grid"><label>Strategy<select value={request.strategyId} onChange={(event) => update("strategyId", event.target.value)}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}</select></label><label>Strategy version<select value={request.versionId} onChange={(event) => update("versionId", event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{versions.map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label><label>Asset<input value={request.asset} onChange={(event) => update("asset", event.target.value)} placeholder="Symbol" /></label><label>Timeframe<input value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)} placeholder="15m" /></label><label>Start date<input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label><label>End date<input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label><label>Session<input value={request.session} onChange={(event) => update("session", event.target.value)} placeholder="All sessions" /></label><label>Risk per trade<input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label><label>Starting balance<input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label></div>
-      <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={runBacktest} disabled={isLoading}>{isLoading ? "Running backtest..." : "Run backtest"}</button><span>Uses real historical bars and the selected version&apos;s enabled conditions.</span></div>
+      <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={handleRunBacktest} disabled={isLoading}>{isLoading ? "Running backtest..." : "Run backtest"}</button><span>Uses real historical bars and the selected version&apos;s enabled conditions.</span></div>
       {error && <p role="alert" className="strategy-error-message">{error}</p>}
       <div className="backtest-results-placeholder"><p className="eyebrow">BACKTEST RESULTS</p><h3>{backtestResult ? "Execution summary" : "Results will appear here"}</h3><p className="backtest-disclaimer">Entries use the selected version&apos;s enabled liquidity sweep, MSS, FVG, order-block, and stochastic conditions. All enabled gates must pass; when both FVG and order block are enabled, either matching directional-zone retest satisfies that zone gate. This is our own rule-based confluence implementation of ICT concepts; detection is based on available OHLC bars and should not be treated as infallible ground truth. Displacement detection is not implemented, so a version requiring it cannot be run.</p>{backtestResult ? <><div className="backtest-result-labels"><span>Total trades<strong>{backtestResult.totalTrades}</strong></span><span>Win rate<strong>{formatMetric(backtestResult.winRate)}%</strong></span><span>Net P&amp;L<strong>{formatCurrency(backtestResult.netPnl)}</strong></span><span>Profit factor<strong>{formatMetric(backtestResult.profitFactor)}</strong></span><span>Max drawdown<strong>{formatCurrency(backtestResult.maxDrawdown)}</strong></span><span>Expectancy<strong>{formatCurrency(backtestResult.expectancy)}</strong></span></div><div className="backtest-equity-chart"><p className="eyebrow">EQUITY CURVE</p><ResponsiveContainer width="100%" height={240}><LineChart data={backtestResult.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}><CartesianGrid strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.14)" /><XAxis dataKey="timestamp" tickFormatter={formatChartTimestamp} stroke="#7f94a8" tick={{ fontSize: 10 }} /><YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={formatChartTimestamp} /><Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></> : <small>Run a test to calculate metrics from the fetched historical bars.</small>}</div>
     </section>
