@@ -147,7 +147,7 @@ export function runBacktest({
   }
 
   const trades = [];
-  const equityCurve = [{ timestamp: bars[0].timestamp, equity: startingBalance }];
+  const equityCurve = [];
   const riskCapital = startingBalance * riskPerTrade;
   let balance = startingBalance;
   let position = null;

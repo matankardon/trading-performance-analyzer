@@ -74,6 +74,28 @@ describe("backtest engine", () => {
     expect(result.winRate).toBe(100);
   });
 
+  it("records one mark-to-market equity point per bar without duplicating the first timestamp", () => {
+    const result = runBacktest({
+      bars: [
+        bar(1, 100, 100, 100, 100),
+        bar(2, 100, 101, 99, 101),
+        bar(3, 101, 103, 100, 102),
+      ],
+      entryRule: ({ index }) => index === 0,
+      stopLossPct: 0.1,
+      takeProfitPct: 0.2,
+      riskPerTrade: 0.01,
+      startingBalance: 1000,
+      direction: "long",
+    });
+
+    expect(result.equityCurve).toEqual([
+      { timestamp: 1, equity: 1000 },
+      { timestamp: 2, equity: 1001 },
+      { timestamp: 3, equity: 1002 },
+    ]);
+  });
+
   it("emits a deterministic SMA crossover signal without using future bars", () => {
     const entryRule = smaCrossover(2, 3);
     const bars = [
