@@ -51,5 +51,7 @@ export function createBacktestRequest() {
     startingBalance: "",
     stopLossPct: "2",
     riskRewardRatio: "2",
+    commissionPerTrade: "1",
+    slippagePct: "0.05",
   };
 }

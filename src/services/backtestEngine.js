@@ -65,11 +65,15 @@ function formatDuration(durationMs) {
   ].filter(Boolean).join(" ");
 }
 
-function closePosition(position, price, timestamp, reason, exitIndex) {
+function closePosition(position, price, timestamp, reason, exitIndex, commissionPerTrade, slippagePct) {
+  const exitPrice = position.direction === "long"
+    ? price * (1 - slippagePct)
+    : price * (1 + slippagePct);
   const priceMove = position.direction === "long"
-    ? price - position.entryPrice
-    : position.entryPrice - price;
-  const pnl = priceMove * position.positionSize;
+    ? exitPrice - position.entryPrice
+    : position.entryPrice - exitPrice;
+  const grossPnl = priceMove * position.positionSize;
+  const pnl = grossPnl - commissionPerTrade;
   const calendarTimeHeldMs = Number.isFinite(position.entryTimestamp) && Number.isFinite(timestamp)
     ? timestamp - position.entryTimestamp
     : NaN;
@@ -77,11 +81,13 @@ function closePosition(position, price, timestamp, reason, exitIndex) {
   return {
     direction: position.direction,
     entryPrice: position.entryPrice,
-    exitPrice: price,
+    exitPrice,
     stopLoss: position.stopLoss,
     takeProfit: position.takeProfit,
     positionSize: position.positionSize,
     pnl,
+    grossPnl,
+    commission: commissionPerTrade,
     entryIndex: position.entryIndex,
     exitIndex,
     barsHeld: exitIndex - position.entryIndex,
@@ -159,11 +165,17 @@ export function runBacktest({
   startingBalance,
   direction = "long",
   debugSignals = false,
+  commissionPerTrade = 0,
+  slippagePct = 0,
 }) {
   validateBars(bars);
   validatePercentage(stopLossPct, "stopLossPct");
   validatePercentage(takeProfitPct, "takeProfitPct");
   validatePercentage(riskPerTrade, "riskPerTrade");
+  validatePercentage(slippagePct, "slippagePct");
+  if (!isFiniteNumber(commissionPerTrade) || commissionPerTrade < 0) {
+    throw new Error("commissionPerTrade must be a non-negative number.");
+  }
   if (!isFiniteNumber(startingBalance) || startingBalance <= 0) {
     throw new Error("startingBalance must be greater than zero.");
   }
@@ -190,7 +202,9 @@ export function runBacktest({
 
   bars.forEach((bar, index) => {
     if (pendingDirection && !position) {
-      const entryPrice = bar.open;
+      const entryPrice = pendingDirection === "long"
+        ? bar.open * (1 + slippagePct)
+        : bar.open * (1 - slippagePct);
       const isLong = pendingDirection === "long";
       const stopLoss = isLong ? entryPrice * (1 - stopLossPct) : entryPrice * (1 + stopLossPct);
       const takeProfit = isLong ? entryPrice * (1 + takeProfitPct) : entryPrice * (1 - takeProfitPct);
@@ -210,7 +224,7 @@ export function runBacktest({
     if (position) {
       const exit = calculateExit(position, bar);
       if (exit) {
-        const trade = closePosition(position, exit.price, bar.timestamp, exit.reason, index);
+        const trade = closePosition(position, exit.price, bar.timestamp, exit.reason, index, commissionPerTrade, slippagePct);
         trades.push(trade);
         if (debugSignals) console.info("[backtest] recorded trade", trade);
         balance += trade.pnl;
@@ -272,7 +286,7 @@ export function runBacktest({
 
   if (position) {
     const lastBar = bars[bars.length - 1];
-    const trade = closePosition(position, lastBar.close, lastBar.timestamp, "end_of_data", bars.length - 1);
+    const trade = closePosition(position, lastBar.close, lastBar.timestamp, "end_of_data", bars.length - 1, commissionPerTrade, slippagePct);
     trades.push(trade);
     if (debugSignals) console.info("[backtest] recorded trade", trade);
     balance += trade.pnl;

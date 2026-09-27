@@ -63,6 +63,35 @@ describe("backtest engine", () => {
     expect(result.maxDrawdown).toBeCloseTo(200, 6);
   });
 
+  it("reduces P&L for adverse entry and exit slippage plus round-trip commission", () => {
+    const bars = [
+      bar(1, 100, 100, 100, 100),
+      bar(2, 100, 101, 99, 100),
+      bar(3, 100, 106, 104, 105.5),
+    ];
+    const baseRequest = {
+      bars,
+      entryRule: ({ index }) => index === 0,
+      stopLossPct: 0.1,
+      takeProfitPct: 0.05,
+      riskPerTrade: 0.01,
+      startingBalance: 10000,
+      direction: "long",
+    };
+    const noCostResult = runBacktest(baseRequest);
+    const costResult = runBacktest({
+      ...baseRequest,
+      commissionPerTrade: 2,
+      slippagePct: 0.001,
+    });
+
+    expect(noCostResult.trades[0].pnl).toBeCloseTo(50, 6);
+    expect(costResult.trades[0].grossPnl).toBeCloseTo(48.95, 6);
+    expect(costResult.trades[0].commission).toBe(2);
+    expect(costResult.trades[0].pnl).toBeCloseTo(46.95, 6);
+    expect(noCostResult.trades[0].pnl - costResult.trades[0].pnl).toBeCloseTo(3.05, 6);
+  });
+
   it("supports short trades and closes an open position at end of data", () => {
     const result = runBacktest({
       bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 100, 90, 95)],

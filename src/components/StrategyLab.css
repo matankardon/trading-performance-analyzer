@@ -383,6 +383,16 @@
   line-height: 1.5;
 }
 
+.backtest-significance-warning {
+  margin-top: 12px;
+  padding: 11px 13px;
+  border-left: 2px solid #e8b458;
+  color: #f2c978;
+  background: rgba(232, 180, 88, 0.1);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .backtest-equity-chart {
   margin-top: 22px;
   padding-top: 18px;
