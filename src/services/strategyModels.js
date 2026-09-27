@@ -50,6 +50,6 @@ export function createBacktestRequest() {
     riskPerTrade: "",
     startingBalance: "",
     stopLossPct: "2",
-    takeProfitPct: "4",
+    riskRewardRatio: "2",
   };
 }

@@ -126,6 +126,19 @@ function parsePricePercentage(value, fieldName) {
   return percentage / 100;
 }
 
+function parseRiskRewardRatio(value) {
+  const ratio = Number(String(value).trim());
+  if (!Number.isFinite(ratio) || ratio <= 0) {
+    throw new Error("Risk:Reward ratio must be greater than zero.");
+  }
+  return ratio;
+}
+
+function formatPercentage(value) {
+  if (!Number.isFinite(value)) return "-";
+  return `${value.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")}%`;
+}
+
 function formatCurrency(value) {
   if (!Number.isFinite(value)) return "-";
   return `$${value.toFixed(2)}`;
@@ -183,7 +196,8 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       const riskPerTrade = parseRiskPerTrade(request.riskPerTrade);
       const startingBalance = parseStartingBalance(request.startingBalance);
       const stopLossPct = parsePricePercentage(request.stopLossPct, "Stop-loss");
-      const takeProfitPct = parsePricePercentage(request.takeProfitPct, "Take-profit");
+      const riskRewardRatio = parseRiskRewardRatio(request.riskRewardRatio);
+      const takeProfitPct = stopLossPct * riskRewardRatio;
       const asset = request.asset.trim().toUpperCase();
       if (!asset) throw new Error("Enter an asset ticker before running the backtest.");
       const fetchedBars = await fetchHistoricalBars(asset, request.timeframe, request.startDate, request.endDate);
@@ -236,7 +250,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
         <label>Risk per trade<input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label>
         <label>Starting balance<input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label>
         <label>Stop-loss %<input type="number" min="0.01" max="100" step="0.01" value={request.stopLossPct} onChange={(event) => update("stopLossPct", event.target.value)} /></label>
-        <label>Take-profit %<input type="number" min="0.01" max="100" step="0.01" value={request.takeProfitPct} onChange={(event) => update("takeProfitPct", event.target.value)} /></label>
+        <label>Risk:Reward ratio<input type="number" min="0.01" step="0.01" value={request.riskRewardRatio} onChange={(event) => update("riskRewardRatio", event.target.value)} /><small>→ {formatPercentage(parseFloat(request.stopLossPct) / 100 * parseFloat(request.riskRewardRatio))} take-profit</small></label>
       </div>
       <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={handleRunBacktest} disabled={isLoading}>{isLoading ? "Loading historical data..." : "Run backtest"}</button><span role="status" aria-live="polite">{isLoading ? "Loading historical data. Wide intraday ranges may take a moment." : "Uses real historical bars and the selected version&apos;s enabled conditions."}</span></div>
       {error && <p role="alert" className="strategy-error-message">{error}</p>}
