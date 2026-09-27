@@ -8,7 +8,7 @@ import {
 
 const MASSIVE_BASE_URL = "https://api.massive.com";
 const MAX_RESULT_PAGES = 10;
-const PAGE_REQUEST_DELAY_MS = 250;
+const PAGE_REQUEST_DELAY_MS = 1000;
 
 function jsonResponse(body: Record<string, unknown>, status: number) {
   return new Response(JSON.stringify(body), {
