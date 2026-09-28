@@ -40,6 +40,7 @@ export function calculateStochastic(bars, kPeriod = 14, dPeriod = 3) {
       if (dWindow.every((value) => Number.isFinite(value))) {
         dValues[index] = dWindow.reduce((total, value) => total + value, 0) / dPeriod;
         result[index] = {
+          confirmedAt: index,
           k: kValues[index],
           d: dValues[index],
           previousK: index > 0 ? kValues[index - 1] : null,

@@ -25,10 +25,10 @@ export function detectSwingPoints(bars, n = 2) {
     ];
 
     if (neighbors.every((bar) => current.high > bar.high)) {
-      swingPoints.push({ index, type: "high", price: current.high });
+      swingPoints.push({ index, confirmedAt: index + n, type: "high", price: current.high });
     }
     if (neighbors.every((bar) => current.low < bar.low)) {
-      swingPoints.push({ index, type: "low", price: current.low });
+      swingPoints.push({ index, confirmedAt: index + n, type: "low", price: current.low });
     }
   }
 
@@ -61,7 +61,9 @@ export function detectMSS(bars, swingPoints) {
   const orderedPoints = [...swingPoints].sort((left, right) => left.index - right.index);
 
   for (let index = 1; index < bars.length; index += 1) {
-    const priorPoints = orderedPoints.filter((point) => point.index < index);
+    const priorPoints = orderedPoints.filter((point) => (
+      point.index < index && (point.confirmedAt ?? point.index) <= index
+    ));
     const swingHighs = priorPoints.filter((point) => point.type === "high");
     const swingLows = priorPoints.filter((point) => point.type === "low");
     if (swingHighs.length < 2 || swingLows.length < 2) continue;
@@ -75,13 +77,13 @@ export function detectMSS(bars, swingPoints) {
 
     const downtrend = latestHigh.price < priorHigh.price && latestLow.price < priorLow.price;
     if (downtrend && previousClose <= latestHigh.price && currentClose > latestHigh.price) {
-      events.push({ index, type: "bullish", brokenLevel: latestHigh.price });
+      events.push({ index, confirmedAt: index, type: "bullish", brokenLevel: latestHigh.price });
       continue;
     }
 
     const uptrend = latestHigh.price > priorHigh.price && latestLow.price > priorLow.price;
     if (uptrend && previousClose >= latestLow.price && currentClose < latestLow.price) {
-      events.push({ index, type: "bearish", brokenLevel: latestLow.price });
+      events.push({ index, confirmedAt: index, type: "bearish", brokenLevel: latestLow.price });
     }
   }
 
@@ -114,6 +116,7 @@ export function detectOrderBlocks(bars, mssEvents) {
       if (isOppositeCandle) {
         return [{
           index,
+          confirmedAt: event.confirmedAt ?? event.index,
           type: event.type,
           top: candle.high,
           bottom: candle.low,

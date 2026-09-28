@@ -1,3 +1,5 @@
+import { validateBars } from "./barValidation";
+
 // This engine deliberately provides only a simple SMA crossover entry rule.
 // Detecting MSS, FVG, order blocks, and liquidity sweeps from OHLC data is a
 // separate future task and must not be implied by the strategy checkboxes.
@@ -19,18 +21,6 @@ function validatePercentage(value, name) {
   if (!isFiniteNumber(value) || value < 0) {
     throw new Error(`${name} must be a non-negative number.`);
   }
-}
-
-function validateBars(bars) {
-  if (!Array.isArray(bars) || bars.length === 0) {
-    throw new Error("bars must contain at least one historical bar.");
-  }
-
-  bars.forEach((bar, index) => {
-    if (!bar || !["open", "high", "low", "close"].every((field) => isFiniteNumber(bar[field]))) {
-      throw new Error(`bar at index ${index} must contain numeric open, high, low, and close values.`);
-    }
-  });
 }
 
 function calculateExit(position, bar) {
@@ -99,7 +89,54 @@ function closePosition(position, price, timestamp, reason, exitIndex, commission
   };
 }
 
-function buildMetrics(trades, equityCurve) {
+function getDailyEquityCloses(equityCurve) {
+  const dailyCloses = new Map();
+  equityCurve.forEach(({ timestamp, equity }) => {
+    const date = new Date(timestamp);
+    if (!Number.isNaN(date.getTime())) {
+      dailyCloses.set(date.toISOString().slice(0, 10), equity);
+    }
+  });
+  return [...dailyCloses.values()];
+}
+
+function calculateSharpeRatio(equityCurve) {
+  const dailyCloses = getDailyEquityCloses(equityCurve);
+  if (dailyCloses.length < 30) return null;
+  const returns = dailyCloses.slice(1).map((close, index) => close / dailyCloses[index] - 1);
+  const mean = returns.reduce((total, value) => total + value, 0) / returns.length;
+  const variance = returns.reduce((total, value) => total + (value - mean) ** 2, 0) / returns.length;
+  const standardDeviation = Math.sqrt(variance);
+  return standardDeviation ? (mean / standardDeviation) * Math.sqrt(252) : null;
+}
+
+export function calculateExpandedMetrics(trades, equityCurve, startingBalance, totalBars) {
+  const wins = trades.filter((trade) => trade.pnl > 0);
+  const losses = trades.filter((trade) => trade.pnl < 0);
+  let maxConsecutiveLosses = 0;
+  let consecutiveLosses = 0;
+  trades.forEach((trade) => {
+    consecutiveLosses = trade.pnl < 0 ? consecutiveLosses + 1 : 0;
+    maxConsecutiveLosses = Math.max(maxConsecutiveLosses, consecutiveLosses);
+  });
+  const averageWin = wins.length ? wins.reduce((total, trade) => total + trade.pnl, 0) / wins.length : 0;
+  const averageLoss = losses.length ? losses.reduce((total, trade) => total + trade.pnl, 0) / losses.length : 0;
+  const barsInPosition = trades.reduce((total, trade) => total + Math.max(0, trade.exitIndex - trade.entryIndex + 1), 0);
+
+  return {
+    returnPct: startingBalance ? (trades.reduce((total, trade) => total + trade.pnl, 0) / startingBalance) * 100 : 0,
+    averageWin,
+    averageLoss,
+    winLossRatio: averageLoss ? averageWin / Math.abs(averageLoss) : null,
+    maxConsecutiveLosses,
+    largestWin: wins.length ? Math.max(...wins.map((trade) => trade.pnl)) : 0,
+    largestLoss: losses.length ? Math.min(...losses.map((trade) => trade.pnl)) : 0,
+    timeInMarketPct: totalBars ? (Math.min(barsInPosition, totalBars) / totalBars) * 100 : 0,
+    sharpeRatio: calculateSharpeRatio(equityCurve),
+  };
+}
+
+function buildMetrics(trades, equityCurve, startingBalance, totalBars) {
   const winningTrades = trades.filter((trade) => trade.pnl > 0);
   const grossProfit = winningTrades.reduce((total, trade) => total + trade.pnl, 0);
   const grossLoss = trades
@@ -121,6 +158,7 @@ function buildMetrics(trades, equityCurve) {
     expectancy: trades.length ? netPnl / trades.length : 0,
     maxDrawdown,
     totalTrades: trades.length,
+    ...calculateExpandedMetrics(trades, equityCurve, startingBalance, totalBars),
   };
 }
 
@@ -309,6 +347,6 @@ export function runBacktest({
   return {
     trades,
     equityCurve,
-    ...buildMetrics(trades, equityCurve),
+    ...buildMetrics(trades, equityCurve, startingBalance, bars.length),
   };
 }

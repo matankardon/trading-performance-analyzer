@@ -35,6 +35,7 @@ function hasRequiredSweep(sweeps, event, direction, lookback) {
   return sweeps.some((sweep) => (
     sweep.type === sweptType
     && sweep.index < event.index
+    && (sweep.confirmedAt ?? sweep.index) <= event.index
     && event.index - sweep.index <= lookback
   ));
 }
@@ -106,6 +107,7 @@ export function ictEntryRule(bars, options = {}) {
       const relevantContexts = mssContexts.filter(({ event }) => (
         event.type === type
         && event.index <= index
+        && (event.confirmedAt ?? event.index) <= index
         && index - event.index <= setupLookback
       ));
       if (requiresMssContext && relevantContexts.length === 0) return false;
@@ -123,7 +125,7 @@ export function ictEntryRule(bars, options = {}) {
 
         const fvgTap = conditions.requireFvg && fvgEvents.some((gap) => (
           gap.type === type
-          && gap.index + 1 < index
+          && (gap.confirmedAt ?? gap.index) <= index
           && index - gap.index <= setupLookback
           && (!event || Math.abs(gap.index - event.index) <= setupLookback)
           && overlapsZone(bars[index], gap)
@@ -151,7 +153,7 @@ export function ictEntryRule(bars, options = {}) {
       for (let index = event.index + 1; index < bars.length && index - event.index <= setupLookback; index += 1) {
         const fvgTap = fvgEvents.some((gap) => (
           gap.type === event.type
-          && gap.index + 1 < index
+          && (gap.confirmedAt ?? gap.index) <= index
           && Math.abs(gap.index - event.index) <= setupLookback
           && overlapsZone(bars[index], gap)
         ));

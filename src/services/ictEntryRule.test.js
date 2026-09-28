@@ -55,6 +55,24 @@ describe("ICT composite entry rule", () => {
     expect(longSignalIndices(bars, { ...testOptions, sweepLookback: 1 })).toEqual([]);
   });
 
+  it("does not use an FVG before its next-bar confirmation", () => {
+    const bars = [
+      bar(10, 11, 9, 10, 0),
+      bar(10, 11, 9, 10, 1),
+      bar(12, 14, 12, 13, 2),
+    ];
+    const entryRule = ictEntryRule(bars, {
+      requireSweep: false,
+      requireMss: false,
+      requireFvg: true,
+      requireOrderBlock: false,
+      requireStoch: false,
+    });
+
+    expect(entryRule({ bars, index: 1, direction: "long" })).toBe(false);
+    expect(entryRule({ bars, index: 2, direction: "long" })).toBe(true);
+  });
+
   it("supports independently disabled conditions while retaining selected gates", () => {
     const bars = confluenceBars();
     bars[7] = { ...bars[7], low: 7.5 };
@@ -67,7 +85,7 @@ describe("ICT composite entry rule", () => {
       requireFvg: true,
       requireOrderBlock: false,
       requireStoch: false,
-    })).toEqual([10]);
+    })).toEqual([9, 10]);
   });
 
   it("rejects strategies that require unsupported displacement detection or no conditions", () => {

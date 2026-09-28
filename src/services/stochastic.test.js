@@ -12,8 +12,8 @@ describe("stochastic oscillator", () => {
       null,
       null,
       null,
-      { k: 10, d: 10, previousK: 10, previousD: null },
-      { k: 30, d: 20, previousK: 10, previousD: 10 },
+      { confirmedAt: 3, k: 10, d: 10, previousK: 10, previousD: null },
+      { confirmedAt: 4, k: 30, d: 20, previousK: 10, previousD: 10 },
     ]);
   });
 

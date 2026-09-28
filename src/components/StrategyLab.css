@@ -474,6 +474,38 @@
   font-size: 14px;
 }
 
+.backtest-expanded-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.backtest-expanded-metrics > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-left: 2px solid var(--terminal-cyan);
+  color: var(--ink-faint);
+  background: rgba(13, 23, 36, 0.48);
+  font-size: 10px;
+}
+
+.backtest-expanded-metrics strong {
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.backtest-metric-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .backtest-disclaimer {
   margin-top: 16px;
   padding: 11px 13px;
@@ -533,6 +565,10 @@
   .backtest-result-labels {
     grid-template-columns: repeat(3, 1fr);
   }
+
+  .backtest-expanded-metrics {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 560px) {
@@ -551,7 +587,8 @@
   .strategy-two-fields,
   .backtest-request-grid,
   .advanced-settings-grid,
-  .backtest-result-labels {
+  .backtest-result-labels,
+  .backtest-expanded-metrics {
     grid-template-columns: 1fr;
   }
 }

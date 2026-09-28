@@ -195,6 +195,10 @@ function formatMetric(value) {
   return value.toFixed(2);
 }
 
+function formatSharpe(value) {
+  return value === null ? "n/a, needs more data" : formatMetric(value);
+}
+
 function formatChartTimestamp(value, timeframe) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
@@ -215,6 +219,21 @@ function getStrategyDirection(direction) {
     return "both";
   }
   return normalized.includes("short") && !normalized.includes("long") ? "short" : "long";
+}
+
+function ExpandedMetrics({ result }) {
+  const metrics = [
+    ["Return %", `${formatMetric(result.returnPct)}%`, "return-percent", "Net P&L as a percentage of the starting balance."],
+    ["Average win", formatCurrency(result.averageWin), "average-win", "Average realized P&L of winning trades."],
+    ["Average loss", formatCurrency(result.averageLoss), "average-loss", "Average realized P&L of losing trades."],
+    ["Win/loss ratio", formatMetric(result.winLossRatio), "win-loss-ratio", "Average win divided by the absolute average loss."],
+    ["Max consecutive losses", result.maxConsecutiveLosses, "max-consecutive-losses", "Longest uninterrupted sequence of losing trades."],
+    ["Largest win", formatCurrency(result.largestWin), "largest-win", "Highest realized P&L from one trade."],
+    ["Largest loss", formatCurrency(result.largestLoss), "largest-loss", "Lowest realized P&L from one trade."],
+    ["Time in market", `${formatMetric(result.timeInMarketPct)}%`, "time-in-market", "Percentage of tested bars covered by an open position."],
+    ["Sharpe ratio", formatSharpe(result.sharpeRatio), "sharpe-ratio", "Annualized daily-return Sharpe ratio; requires at least 30 daily equity points."],
+  ];
+  return <div className="backtest-expanded-metrics">{metrics.map(([label, value, helpId, helpText]) => <span key={label}><span className="backtest-metric-label">{label}<HelpTooltip id={helpId} text={helpText} /></span><strong>{value}</strong></span>)}</div>;
 }
 
 function BacktestWorkspace({ strategies, request, setRequest }) {
@@ -328,6 +347,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={handleRunBacktest} disabled={isLoading}>{isLoading ? "Loading historical data..." : "Run backtest"}</button><span role="status" aria-live="polite">{isLoading ? "Loading historical data. Wide intraday ranges may take a moment." : "Uses real historical bars and the selected version&apos;s enabled conditions."}</span></div>
       {error && <p role="alert" className="strategy-error-message">{error}</p>}
       <div className="backtest-results-placeholder"><p className="eyebrow">BACKTEST RESULTS</p><h3>{backtestResult ? "Execution summary" : "Results will appear here"}</h3><p className="backtest-disclaimer">Entries use the selected version&apos;s enabled liquidity sweep, MSS, FVG, order-block, and stochastic conditions. All enabled gates must pass; when both FVG and order block are enabled, either matching directional-zone retest satisfies that zone gate. This is our own rule-based confluence implementation of ICT concepts; detection is based on available OHLC bars and should not be treated as infallible ground truth. Displacement detection is not implemented, so a version requiring it cannot be run.</p>{backtestResult && backtestResult.totalTrades < 30 && <p className="backtest-significance-warning">Only {backtestResult.totalTrades} trades — results are not statistically meaningful yet. Aim for 100+ trades before trusting these metrics.</p>}{backtestResult ? <><div className="backtest-result-labels"><span>Total trades<strong>{backtestResult.totalTrades}</strong></span><span>Win rate<strong>{formatMetric(backtestResult.winRate)}%</strong></span><span>Net P&amp;L<strong>{formatCurrency(backtestResult.netPnl)}</strong></span><span>Profit factor<strong>{formatMetric(backtestResult.profitFactor)}</strong></span><span>Max drawdown<strong>{formatCurrency(backtestResult.maxDrawdown)}</strong></span><span>Expectancy<strong>{formatCurrency(backtestResult.expectancy)}</strong></span></div><div className="backtest-equity-chart"><p className="eyebrow">EQUITY CURVE</p><ResponsiveContainer width="100%" height={240}><LineChart data={backtestResult.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.08)" /><XAxis type="number" dataKey="timestamp" scale="time" domain={["dataMin", "dataMax"]} tickCount={6} minTickGap={24} tickFormatter={(value) => formatChartTimestamp(value, request.timeframe)} stroke="#7f94a8" tick={{ fontSize: 10 }} /><YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={(value) => formatChartTimestamp(value, request.timeframe)} /><Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></> : <small>Run a test to calculate metrics from the fetched historical bars.</small>}</div>
+      {backtestResult && <ExpandedMetrics result={backtestResult} />}
     </section>
   );
 }

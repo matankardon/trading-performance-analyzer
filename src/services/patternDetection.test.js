@@ -16,10 +16,10 @@ describe("pattern detection", () => {
     ];
 
     expect(detectFVGs(bars)).toEqual([
-      { index: 1, type: "bullish", top: 13, bottom: 12 },
-      { index: 2, type: "bullish", top: 16, bottom: 15 },
-      { index: 3, type: "bearish", top: 13, bottom: 12 },
-      { index: 4, type: "bearish", top: 16, bottom: 13 },
+      { index: 1, confirmedAt: 2, type: "bullish", top: 13, bottom: 12 },
+      { index: 2, confirmedAt: 3, type: "bullish", top: 16, bottom: 15 },
+      { index: 3, confirmedAt: 4, type: "bearish", top: 13, bottom: 12 },
+      { index: 4, confirmedAt: 5, type: "bearish", top: 16, bottom: 13 },
     ]);
   });
 
@@ -38,8 +38,8 @@ describe("pattern detection", () => {
     ];
 
     expect(detectLiquiditySweeps(bars, 2)).toEqual([
-      { index: 2, type: "high", sweptLevel: 12, reversed: true },
-      { index: 2, type: "low", sweptLevel: 8, reversed: true },
+      { index: 2, confirmedAt: 2, type: "high", sweptLevel: 12, reversed: true },
+      { index: 2, confirmedAt: 2, type: "low", sweptLevel: 8, reversed: true },
     ]);
   });
 
@@ -54,7 +54,7 @@ describe("pattern detection", () => {
     ];
 
     expect(detectLiquiditySweeps(bars, 2)).toEqual([
-      { index: 2, type: "high", sweptLevel: 12, reversed: true },
+      { index: 2, confirmedAt: 3, type: "high", sweptLevel: 12, reversed: true },
     ]);
   });
 

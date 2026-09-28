@@ -1,4 +1,4 @@
-import { runBacktest, smaCrossover } from "./backtestEngine";
+import { calculateExpandedMetrics, runBacktest, smaCrossover } from "./backtestEngine";
 
 function bar(timestamp, open, high, low, close) {
   return { timestamp, open, high, low, close, volume: 100 };
@@ -67,7 +67,7 @@ describe("backtest engine", () => {
     const bars = [
       bar(1, 100, 100, 100, 100),
       bar(2, 100, 101, 99, 100),
-      bar(3, 100, 106, 104, 105.5),
+      bar(3, 100, 106, 99, 105.5),
     ];
     const baseRequest = {
       bars,
@@ -131,6 +131,33 @@ describe("backtest engine", () => {
       { timestamp: 2, equity: 1001 },
       { timestamp: 3, equity: 1002 },
     ]);
+  });
+
+  it("calculates additive return, trade distribution, time-in-market, and daily Sharpe metrics", () => {
+    const dailyEquity = [1000];
+    for (let index = 0; index < 30; index += 1) {
+      dailyEquity.push(dailyEquity.at(-1) * (index % 2 === 0 ? 1.01 : 0.99));
+    }
+    const equityCurve = dailyEquity.map((equity, index) => ({
+      timestamp: index * 86400000,
+      equity,
+    }));
+    const metrics = calculateExpandedMetrics([
+      { pnl: 100, entryIndex: 0, exitIndex: 1 },
+      { pnl: -50, entryIndex: 2, exitIndex: 4 },
+      { pnl: -25, entryIndex: 5, exitIndex: 5 },
+      { pnl: 75, entryIndex: 6, exitIndex: 7 },
+    ], equityCurve, 1000, 10);
+
+    expect(metrics.returnPct).toBe(10);
+    expect(metrics.averageWin).toBe(87.5);
+    expect(metrics.averageLoss).toBe(-37.5);
+    expect(metrics.winLossRatio).toBeCloseTo(2.333333, 6);
+    expect(metrics.maxConsecutiveLosses).toBe(2);
+    expect(metrics.largestWin).toBe(100);
+    expect(metrics.largestLoss).toBe(-50);
+    expect(metrics.timeInMarketPct).toBe(80);
+    expect(metrics.sharpeRatio).toBeCloseTo(0, 10);
   });
 
   it("reports raw signals separately from signals suppressed by an open position", () => {

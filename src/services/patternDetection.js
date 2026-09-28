@@ -21,6 +21,7 @@ export function detectFVGs(bars) {
     if (previous.high < next.low) {
       gaps.push({
         index,
+        confirmedAt: index + 1,
         type: "bullish",
         top: next.low,
         bottom: previous.high,
@@ -29,6 +30,7 @@ export function detectFVGs(bars) {
     if (previous.low > next.high) {
       gaps.push({
         index,
+        confirmedAt: index + 1,
         type: "bearish",
         top: previous.low,
         bottom: next.high,
@@ -55,10 +57,22 @@ export function detectLiquiditySweeps(bars, lookback = 5) {
     const next = bars[index + 1];
 
     if (current.high > priorHigh && (current.close < priorHigh || (next && next.close < priorHigh))) {
-      sweeps.push({ index, type: "high", sweptLevel: priorHigh, reversed: true });
+      sweeps.push({
+        index,
+        confirmedAt: current.close < priorHigh ? index : index + 1,
+        type: "high",
+        sweptLevel: priorHigh,
+        reversed: true,
+      });
     }
     if (current.low < priorLow && (current.close > priorLow || (next && next.close > priorLow))) {
-      sweeps.push({ index, type: "low", sweptLevel: priorLow, reversed: true });
+      sweeps.push({
+        index,
+        confirmedAt: current.close > priorLow ? index : index + 1,
+        type: "low",
+        sweptLevel: priorLow,
+        reversed: true,
+      });
     }
   }
 

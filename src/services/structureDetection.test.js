@@ -19,20 +19,22 @@ const bearishShiftBars = [
 describe("market structure detection", () => {
   it("finds strict one-bar swing highs and lows at their exact indices", () => {
     expect(detectSwingPoints(bearishShiftBars, 1)).toEqual([
-      { index: 1, type: "high", price: 14 },
-      { index: 2, type: "low", price: 9 },
-      { index: 3, type: "high", price: 13 },
-      { index: 4, type: "low", price: 8 },
-      { index: 5, type: "high", price: 12 },
-      { index: 6, type: "low", price: 7 },
+      { index: 1, confirmedAt: 2, type: "high", price: 14 },
+      { index: 2, confirmedAt: 3, type: "low", price: 9 },
+      { index: 3, confirmedAt: 4, type: "high", price: 13 },
+      { index: 4, confirmedAt: 5, type: "low", price: 8 },
+      { index: 5, confirmedAt: 6, type: "high", price: 12 },
+      { index: 6, confirmedAt: 7, type: "low", price: 7 },
     ]);
   });
 
   it("uses two lower highs and lows to confirm bullish MSS above the latest swing high", () => {
     const swingPoints = detectSwingPoints(bearishShiftBars, 1);
+    const mssEvents = detectMSS(bearishShiftBars, swingPoints);
 
-    expect(detectMSS(bearishShiftBars, swingPoints)).toEqual([
-      { index: 8, type: "bullish", brokenLevel: 12 },
+    expect(mssEvents.every((event) => event.index >= event.confirmedAt)).toBe(true);
+    expect(mssEvents).toEqual([
+      { index: 8, confirmedAt: 8, type: "bullish", brokenLevel: 12 },
     ]);
   });
 
@@ -41,7 +43,7 @@ describe("market structure detection", () => {
     const mssEvents = detectMSS(bearishShiftBars, swingPoints);
 
     expect(detectOrderBlocks(bearishShiftBars, mssEvents)).toEqual([
-      { index: 7, type: "bullish", top: 9.5, bottom: 8 },
+      { index: 7, confirmedAt: 8, type: "bullish", top: 9.5, bottom: 8 },
     ]);
   });
 
@@ -57,10 +59,10 @@ describe("market structure detection", () => {
     const mssEvents = detectMSS(bullishShiftBars, swingPoints);
 
     expect(mssEvents).toEqual([
-      { index: 8, type: "bearish", brokenLevel: -12 },
+      { index: 8, confirmedAt: 8, type: "bearish", brokenLevel: -12 },
     ]);
     expect(detectOrderBlocks(bullishShiftBars, mssEvents)).toEqual([
-      { index: 7, type: "bearish", top: -8, bottom: -9.5 },
+      { index: 7, confirmedAt: 8, type: "bearish", top: -8, bottom: -9.5 },
     ]);
   });
 
