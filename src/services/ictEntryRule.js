@@ -92,7 +92,7 @@ export function ictEntryRule(bars, options = {}) {
 
   const requiresMssContext = conditions.requireMss || conditions.requireSweep || conditions.requireOrderBlock;
 
-  return ({ bars: currentBars, index, direction = "long" }) => {
+  const entryRule = ({ bars: currentBars, index, direction = "long" }) => {
     if (currentBars !== bars || !Number.isInteger(index) || index < 0 || index >= bars.length) {
       return false;
     }
@@ -136,4 +136,63 @@ export function ictEntryRule(bars, options = {}) {
       });
     });
   };
+
+  entryRule.getDiagnostics = (direction = "both") => {
+    const directions = direction === "both" ? ["long", "short"] : [direction];
+    const directionTypes = directions.map(getDirectionType).filter(Boolean);
+    const mssIndices = new Set(
+      mssEvents
+        .filter((event) => directionTypes.includes(event.type))
+        .map((event) => event.index),
+    );
+    const zoneRetestIndices = new Set();
+    mssContexts.forEach(({ event, orderBlock }) => {
+      if (!directionTypes.includes(event.type)) return;
+      for (let index = event.index + 1; index < bars.length && index - event.index <= setupLookback; index += 1) {
+        const fvgTap = fvgEvents.some((gap) => (
+          gap.type === event.type
+          && gap.index + 1 < index
+          && Math.abs(gap.index - event.index) <= setupLookback
+          && overlapsZone(bars[index], gap)
+        ));
+        const orderBlockTap = Boolean(orderBlock) && overlapsZone(bars[index], orderBlock);
+        if (fvgTap || orderBlockTap) zoneRetestIndices.add(index);
+      }
+    });
+    const stochasticIndices = new Set();
+    stochastic.forEach((value, index) => {
+      if (directions.some((side) => isStochasticConfirming(value, side))) stochasticIndices.add(index);
+    });
+    const allGatesIndices = new Set();
+    bars.forEach((_, index) => {
+      if (directions.some((side) => entryRule({ bars, index, direction: side }))) {
+        allGatesIndices.add(index);
+      }
+    });
+    const stages = [
+      ["bars", bars.length],
+      ["sweepDetected", new Set(sweeps.map((sweep) => sweep.index)).size],
+      ["mssDetected", mssIndices.size],
+      ["obFvgRetest", zoneRetestIndices.size],
+      ["stochasticConfirmation", stochasticIndices.size],
+      ["allGatesTogether", allGatesIndices.size],
+    ];
+    const biggestDropOff = stages.slice(1).reduce((largest, [stage, count], index) => {
+      const previous = stages[index][1];
+      const dropped = Math.max(0, previous - count);
+      return dropped > largest.dropped ? { from: stages[index][0], to: stage, dropped } : largest;
+    }, { from: null, to: null, dropped: 0 });
+
+    return {
+      direction,
+      sweepDetected: stages[1][1],
+      mssDetected: stages[2][1],
+      obFvgRetest: stages[3][1],
+      stochasticConfirmation: stages[4][1],
+      allGatesTogether: stages[5][1],
+      biggestDropOff,
+    };
+  };
+
+  return entryRule;
 }

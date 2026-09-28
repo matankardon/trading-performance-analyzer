@@ -31,6 +31,50 @@ import "./StrategyLab.css";
 const backtestAssets = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "SPY", "QQQ"];
 const backtestSessions = ["All sessions", "New York", "London", "Asia", "Overlap"];
 const recentBacktestAssetsStorageKey = "tradeCatalystRecentBacktestAssets";
+const defaultEntrySensitivity = {
+  swingSize: "2",
+  sweepDetectionLookback: "5",
+  sweepLookback: "10",
+  setupLookback: "20",
+  stochasticKPeriod: "14",
+  stochasticDPeriod: "3",
+};
+
+function HelpTooltip({ id, text }) {
+  const [open, setOpen] = useState(false);
+  const tooltipId = `${id}-help`;
+  return (
+    <span
+      className="help-tooltip"
+      onMouseEnter={() => setOpen(true)}
+      onMouseLeave={() => setOpen(false)}
+    >
+      <button
+        type="button"
+        className="help-tooltip-trigger"
+        aria-label={`Help for ${id}`}
+        aria-describedby={open ? tooltipId : undefined}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(event) => {
+          if (event.key === "Escape") {
+            setOpen(false);
+            event.currentTarget.blur();
+          }
+        }}
+      >
+        ?
+      </button>
+      <span id={tooltipId} className={`help-tooltip-content${open ? " visible" : ""}`} role="tooltip">
+        {text}
+      </span>
+    </span>
+  );
+}
+
+function FieldLabel({ children, helpId, helpText }) {
+  return <span className="field-label">{children}<HelpTooltip id={helpId} text={helpText} /></span>;
+}
 
 function loadRecentBacktestAssets() {
   try {
@@ -179,11 +223,13 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [recentAssets, setRecentAssets] = useState(loadRecentBacktestAssets);
+  const [entrySensitivity, setEntrySensitivity] = useState(defaultEntrySensitivity);
   const requestInProgress = useRef(false);
   const selectedStrategy = strategies.find((strategy) => strategy.id === request.strategyId);
   const versions = selectedStrategy?.versions || [];
   const selectedVersion = versions.find((version) => version.id === request.versionId);
   const update = (field, value) => setRequest((previous) => ({ ...previous, [field]: value }));
+  const updateSensitivity = (field, value) => setEntrySensitivity((previous) => ({ ...previous, [field]: value }));
 
   async function handleRunBacktest() {
     if (requestInProgress.current) return;
@@ -215,6 +261,12 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
         requireDisplacement: Boolean(conditions.displacement),
         requireOrderBlock: Boolean(conditions.orderBlock),
         requireStoch: Boolean(conditions.stochasticConfirmation),
+        swingSize: Number(entrySensitivity.swingSize),
+        sweepDetectionLookback: Number(entrySensitivity.sweepDetectionLookback),
+        sweepLookback: Number(entrySensitivity.sweepLookback),
+        setupLookback: Number(entrySensitivity.setupLookback),
+        stochasticKPeriod: Number(entrySensitivity.stochasticKPeriod),
+        stochasticDPeriod: Number(entrySensitivity.stochasticDPeriod),
       });
       const result = runBacktest({
         bars: fetchedBars,
@@ -248,20 +300,31 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
     <section className="strategy-lab-section backtest-section">
       <div className="strategy-section-heading"><div><p className="eyebrow">BACKTESTING INTERFACE</p><h2>Test a strategy version</h2><p>Run a deterministic test over real historical bars using the selected version&apos;s enabled, implemented entry conditions.</p></div><span className="strategy-data-status">{status}</span></div>
       <div className="backtest-request-grid">
-        <label>Strategy<select value={request.strategyId} onChange={(event) => update("strategyId", event.target.value)}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}</select></label>
-        <label>Strategy version<select value={request.versionId} onChange={(event) => update("versionId", event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{versions.map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label>
-        <label>Asset<input list="recent-backtest-assets" value={request.asset} onChange={(event) => update("asset", event.target.value.toUpperCase())} placeholder="Ticker, e.g. AAPL" autoComplete="off" /><datalist id="recent-backtest-assets">{recentAssets.map((asset) => <option value={asset} key={asset} />)}{backtestAssets.map((asset) => <option value={asset} key={`common-${asset}`} />)}</datalist></label>
-        <label>Timeframe<select value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)}><option value="">Select timeframe</option>{supportedHistoricalTimeframes.map(({ value }) => <option value={value} key={value}>{value}</option>)}</select></label>
-        <label>Start date<input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
-        <label>End date<input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>
-        <label>Session<select value={request.session || "All sessions"} onChange={(event) => update("session", event.target.value)}>{backtestSessions.map((session) => <option value={session} key={session}>{session}</option>)}</select></label>
-        <label>Risk per trade<input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label>
-        <label>Starting balance<input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label>
-        <label>Stop-loss %<input type="number" min="0.01" max="100" step="0.01" value={request.stopLossPct} onChange={(event) => update("stopLossPct", event.target.value)} /></label>
-        <label>Risk:Reward ratio<input type="number" min="0.01" step="0.01" value={request.riskRewardRatio} onChange={(event) => update("riskRewardRatio", event.target.value)} /><small>→ {formatPercentage(calculateTakeProfitPercent(request.stopLossPct, request.riskRewardRatio))} take-profit</small></label>
-        <label>Commission per trade ($)<input type="number" min="0" step="0.01" value={request.commissionPerTrade} onChange={(event) => update("commissionPerTrade", event.target.value)} /></label>
-        <label>Slippage (%)<input type="number" min="0" max="100" step="0.01" value={request.slippagePct} onChange={(event) => update("slippagePct", event.target.value)} /></label>
+        <label><FieldLabel helpId="strategy" helpText="Which saved strategy version&apos;s enabled conditions to test.">Strategy</FieldLabel><select value={request.strategyId} onChange={(event) => update("strategyId", event.target.value)}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}</select></label>
+        <label><FieldLabel helpId="version" helpText="Which saved strategy version&apos;s enabled conditions to test.">Strategy version</FieldLabel><select value={request.versionId} onChange={(event) => update("versionId", event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{versions.map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label>
+        <label><FieldLabel helpId="asset" helpText="Ticker symbol to test, e.g. AAPL.">Asset</FieldLabel><input list="recent-backtest-assets" value={request.asset} onChange={(event) => update("asset", event.target.value.toUpperCase())} placeholder="Ticker, e.g. AAPL" autoComplete="off" /><datalist id="recent-backtest-assets">{recentAssets.map((asset) => <option value={asset} key={asset} />)}{backtestAssets.map((asset) => <option value={asset} key={`common-${asset}`} />)}</datalist></label>
+        <label><FieldLabel helpId="timeframe" helpText="Candle size. Smaller means more bars and more noise; wide ranges on small timeframes load slowly.">Timeframe</FieldLabel><select value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)}><option value="">Select timeframe</option>{supportedHistoricalTimeframes.map(({ value }) => <option value={value} key={value}>{value}</option>)}</select></label>
+        <label><FieldLabel helpId="start-date" helpText="Period of history to test. More history generally makes results more reliable.">Start date</FieldLabel><input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
+        <label><FieldLabel helpId="end-date" helpText="Period of history to test. More history generally makes results more reliable.">End date</FieldLabel><input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>
+        <label><FieldLabel helpId="session" helpText="Only allow entries during this trading session.">Session</FieldLabel><select value={request.session || "All sessions"} onChange={(event) => update("session", event.target.value)}>{backtestSessions.map((session) => <option value={session} key={session}>{session}</option>)}</select></label>
+        <label><FieldLabel helpId="risk-per-trade" helpText="How much of your balance to risk per trade, e.g. 1 = 1%.">Risk per trade</FieldLabel><input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label>
+        <label><FieldLabel helpId="starting-balance" helpText="Simulated account size in dollars.">Starting balance</FieldLabel><input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label>
+        <label><FieldLabel helpId="risk-reward" helpText="Take-profit distance as a multiple of your stop-loss, e.g. 2 means win twice what you risk.">Risk:Reward ratio</FieldLabel><input type="number" min="0.01" step="0.01" value={request.riskRewardRatio} onChange={(event) => update("riskRewardRatio", event.target.value)} /><small>→ {formatPercentage(calculateTakeProfitPercent(request.stopLossPct, request.riskRewardRatio))} take-profit</small></label>
       </div>
+      <details className="advanced-settings">
+        <summary>Advanced settings</summary>
+        <div className="advanced-settings-grid">
+          <label><FieldLabel helpId="stop-loss" helpText="How far price may move against you before exit, e.g. 0.5.">Stop-loss %</FieldLabel><input type="number" min="0.01" max="100" step="0.01" value={request.stopLossPct} onChange={(event) => update("stopLossPct", event.target.value)} /></label>
+          <label><FieldLabel helpId="commission" helpText="Flat fee per round trip, e.g. 1 dollar.">Commission per trade ($)</FieldLabel><input type="number" min="0" step="0.01" value={request.commissionPerTrade} onChange={(event) => update("commissionPerTrade", event.target.value)} /></label>
+          <label><FieldLabel helpId="slippage" helpText="Adverse fill difference applied to entry and exit, e.g. 0.05%.">Slippage %</FieldLabel><input type="number" min="0" max="100" step="0.01" value={request.slippagePct} onChange={(event) => update("slippagePct", event.target.value)} /></label>
+          <label><FieldLabel helpId="swing-window" helpText="Bars required on each side of a pivot. Raising it confirms fewer, wider swings.">Swing pivot window</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.swingSize} onChange={(event) => updateSensitivity("swingSize", event.target.value)} /></label>
+          <label><FieldLabel helpId="sweep-detection-lookback" helpText="Prior bars used to define the range a wick must sweep. Raising it compares against a wider range.">Sweep detection lookback</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.sweepDetectionLookback} onChange={(event) => updateSensitivity("sweepDetectionLookback", event.target.value)} /></label>
+          <label><FieldLabel helpId="sweep-lookback" helpText="Maximum bars allowed between a sweep and MSS. Raising it allows older sweeps to qualify.">Sweep-to-MSS lookback</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.sweepLookback} onChange={(event) => updateSensitivity("sweepLookback", event.target.value)} /></label>
+          <label><FieldLabel helpId="retest-window" helpText="Maximum bars after MSS for an order-block or FVG retest. Raising it allows later retests.">MSS retest window</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.setupLookback} onChange={(event) => updateSensitivity("setupLookback", event.target.value)} /></label>
+          <label><FieldLabel helpId="stochastic-k" helpText="Number of bars in the stochastic high/low range. Raising it uses a wider range and changes %K more slowly.">Stochastic K period</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.stochasticKPeriod} onChange={(event) => updateSensitivity("stochasticKPeriod", event.target.value)} /></label>
+          <label><FieldLabel helpId="stochastic-d" helpText="Bars averaged for %D. Raising it smooths %D and makes confirmation less responsive.">Stochastic D period</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.stochasticDPeriod} onChange={(event) => updateSensitivity("stochasticDPeriod", event.target.value)} /></label>
+        </div>
+      </details>
       <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={handleRunBacktest} disabled={isLoading}>{isLoading ? "Loading historical data..." : "Run backtest"}</button><span role="status" aria-live="polite">{isLoading ? "Loading historical data. Wide intraday ranges may take a moment." : "Uses real historical bars and the selected version&apos;s enabled conditions."}</span></div>
       {error && <p role="alert" className="strategy-error-message">{error}</p>}
       <div className="backtest-results-placeholder"><p className="eyebrow">BACKTEST RESULTS</p><h3>{backtestResult ? "Execution summary" : "Results will appear here"}</h3><p className="backtest-disclaimer">Entries use the selected version&apos;s enabled liquidity sweep, MSS, FVG, order-block, and stochastic conditions. All enabled gates must pass; when both FVG and order block are enabled, either matching directional-zone retest satisfies that zone gate. This is our own rule-based confluence implementation of ICT concepts; detection is based on available OHLC bars and should not be treated as infallible ground truth. Displacement detection is not implemented, so a version requiring it cannot be run.</p>{backtestResult && backtestResult.totalTrades < 30 && <p className="backtest-significance-warning">Only {backtestResult.totalTrades} trades — results are not statistically meaningful yet. Aim for 100+ trades before trusting these metrics.</p>}{backtestResult ? <><div className="backtest-result-labels"><span>Total trades<strong>{backtestResult.totalTrades}</strong></span><span>Win rate<strong>{formatMetric(backtestResult.winRate)}%</strong></span><span>Net P&amp;L<strong>{formatCurrency(backtestResult.netPnl)}</strong></span><span>Profit factor<strong>{formatMetric(backtestResult.profitFactor)}</strong></span><span>Max drawdown<strong>{formatCurrency(backtestResult.maxDrawdown)}</strong></span><span>Expectancy<strong>{formatCurrency(backtestResult.expectancy)}</strong></span></div><div className="backtest-equity-chart"><p className="eyebrow">EQUITY CURVE</p><ResponsiveContainer width="100%" height={240}><LineChart data={backtestResult.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.08)" /><XAxis type="number" dataKey="timestamp" scale="time" domain={["dataMin", "dataMax"]} tickCount={6} minTickGap={24} tickFormatter={(value) => formatChartTimestamp(value, request.timeframe)} stroke="#7f94a8" tick={{ fontSize: 10 }} /><YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={(value) => formatChartTimestamp(value, request.timeframe)} /><Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></> : <small>Run a test to calculate metrics from the fetched historical bars.</small>}</div>

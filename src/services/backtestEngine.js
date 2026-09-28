@@ -294,6 +294,9 @@ export function runBacktest({
   }
 
   if (debugSignals) {
+    if (typeof entryRule.getDiagnostics === "function") {
+      console.info("[backtest] condition funnel", entryRule.getDiagnostics(direction));
+    }
     console.info("[backtest] signal diagnostics", {
       rawSignalCount,
       queuedSignalCount,
