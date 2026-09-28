@@ -125,13 +125,14 @@ export function ictEntryRule(bars, options = {}) {
 
         const fvgTap = conditions.requireFvg && fvgEvents.some((gap) => (
           gap.type === type
-          && (gap.confirmedAt ?? gap.index) <= index
+          && index > (gap.confirmedAt ?? gap.index)
           && index - gap.index <= setupLookback
           && (!event || Math.abs(gap.index - event.index) <= setupLookback)
           && overlapsZone(bars[index], gap)
         ));
         const orderBlockTap = conditions.requireOrderBlock
           && Boolean(context?.orderBlock)
+          && index > (context.orderBlock.confirmedAt ?? context.orderBlock.index)
           && overlapsZone(bars[index], context.orderBlock);
 
         return Boolean(fvgTap || orderBlockTap);
@@ -153,11 +154,13 @@ export function ictEntryRule(bars, options = {}) {
       for (let index = event.index + 1; index < bars.length && index - event.index <= setupLookback; index += 1) {
         const fvgTap = fvgEvents.some((gap) => (
           gap.type === event.type
-          && (gap.confirmedAt ?? gap.index) <= index
+          && index > (gap.confirmedAt ?? gap.index)
           && Math.abs(gap.index - event.index) <= setupLookback
           && overlapsZone(bars[index], gap)
         ));
-        const orderBlockTap = Boolean(orderBlock) && overlapsZone(bars[index], orderBlock);
+        const orderBlockTap = Boolean(orderBlock)
+          && index > (orderBlock.confirmedAt ?? orderBlock.index)
+          && overlapsZone(bars[index], orderBlock);
         if (fvgTap || orderBlockTap) zoneRetestIndices.add(index);
       }
     });
