@@ -22,6 +22,7 @@ import {
   strategyToDb,
   strategyVersionToDb,
 } from "../models/strategy";
+import { dbToBacktestResult, backtestResultToDb } from "../models/backtestResult";
 import { runBacktest } from "../services/backtestEngine";
 import { calculateTakeProfitPercent } from "../services/backtestParameters";
 import { buildBacktestConfig } from "../services/backtestConfig";
@@ -208,7 +209,7 @@ function ResultCaption({ context }) {
   return <p className="backtest-result-caption">Result parameters: {context.asset} · {context.timeframe} · {context.session} · {context.startDate} to {context.endDate} · SL {context.stopLoss}% · R:R {context.riskReward}</p>;
 }
 
-function BacktestWorkspace({ strategies, request, setRequest }) {
+function BacktestWorkspace({ strategies, request, setRequest, userId }) {
   const [bars, setBars] = useState(null);
   const [backtestResult, setBacktestResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -248,6 +249,32 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
         ...config.engine,
         debugSignals: new URLSearchParams(window.location.search).get("debugBacktestSignals") === "1",
       });
+      const resultMetrics = Object.fromEntries(
+        Object.entries(result).filter(([key]) => !["trades", "equityCurve"].includes(key)),
+      );
+      const persistedResult = backtestResultToDb({
+        userId,
+        strategyVersionId: selectedVersion.id,
+        asset,
+        timeframe: request.timeframe,
+        session: request.session || "All sessions",
+        startDate: request.startDate,
+        endDate: request.endDate,
+        config,
+        metrics: {
+          ...resultMetrics,
+          equityCurve: result.equityCurve,
+          sizeCappedTradeCount: result.sizeCappedTradeCount,
+        },
+        trades: result.trades,
+      });
+      const { error: saveError } = await supabase
+        .from("backtest_results")
+        .insert(persistedResult)
+        .select();
+      if (saveError) {
+        console.error("Could not save completed backtest:", saveError);
+      }
       setBars(fetchedBars);
       setBacktestResult(result);
       setResultContext({
@@ -309,6 +336,244 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
       {backtestResult && backtestResult.sizeCappedTradeCount > 0 && <p className="backtest-size-cap-note">{backtestResult.sizeCappedTradeCount} trade(s) were size-capped at 1x account equity — your stop-loss % and risk per trade implied a larger position than your balance allows.</p>}
       {backtestResult && <ExpandedMetrics result={backtestResult} />}
       <TradeLog trades={backtestResult?.trades || []} bars={bars || []} asset={resultContext?.asset || request.asset} />
+    </section>
+  );
+}
+
+function VersionCompare({ strategies, selectedStrategy, userId }) {
+  const [compareStrategyId, setCompareStrategyId] = useState(selectedStrategy?.id || "");
+  const [savedRuns, setSavedRuns] = useState([]);
+  const [selectedRunId, setSelectedRunId] = useState("");
+  const [selectedRunBars, setSelectedRunBars] = useState([]);
+  const [barsLoading, setBarsLoading] = useState(false);
+  const [barsLoadError, setBarsLoadError] = useState("");
+  const [compareRunAId, setCompareRunAId] = useState("");
+  const [compareRunBId, setCompareRunBId] = useState("");
+  const barsRequestId = useRef(0);
+
+  useEffect(() => {
+    if (!selectedStrategy && strategies.length > 0 && !compareStrategyId) {
+      setCompareStrategyId(strategies[0].id);
+    }
+  }, [compareStrategyId, selectedStrategy, strategies]);
+
+  useEffect(() => {
+    if (!userId || !compareStrategyId) {
+      setSavedRuns([]);
+      setSelectedRunId("");
+      setCompareRunAId("");
+      setCompareRunBId("");
+      return;
+    }
+
+    let active = true;
+
+    async function loadSavedRuns() {
+      const strategy = strategies.find((entry) => entry.id === compareStrategyId) || selectedStrategy;
+      if (!strategy) {
+        setSavedRuns([]);
+        return;
+      }
+
+      const versionIds = (strategy.versions || []).map((version) => version.id).filter(Boolean);
+      const { data, error } = versionIds.length
+        ? await supabase
+            .from("backtest_results")
+            .select("*")
+            .in("strategy_version_id", versionIds)
+            .order("created_at", { ascending: false })
+        : { data: [], error: null };
+
+      if (error) {
+        console.error("Could not load saved backtest results:", error);
+        return;
+      }
+
+      if (!active) return;
+      const nextRuns = (data || []).map(dbToBacktestResult);
+      setSavedRuns(nextRuns);
+      setSelectedRunId((current) => current && nextRuns.some((run) => run.id === current) ? current : nextRuns[0]?.id || "");
+      setCompareRunAId((current) => current && nextRuns.some((run) => run.id === current) ? current : nextRuns[0]?.id || "");
+      setCompareRunBId((current) => current && nextRuns.some((run) => run.id === current) ? current : nextRuns[1]?.id || "");
+    }
+
+    loadSavedRuns();
+    return () => { active = false; };
+  }, [compareStrategyId, selectedStrategy, strategies, userId]);
+
+  async function openSavedRun(result) {
+    const requestId = ++barsRequestId.current;
+    setSelectedRunId(result.id);
+    setSelectedRunBars([]);
+    setBarsLoadError("");
+    setBarsLoading(true);
+
+    try {
+      const bars = await fetchHistoricalBars(
+        result.asset,
+        result.timeframe,
+        result.startDate,
+        result.endDate,
+      );
+      if (!Array.isArray(bars) || bars.length === 0) {
+        throw new Error("No historical bars were returned for this saved result.");
+      }
+      if (requestId === barsRequestId.current) setSelectedRunBars(bars);
+    } catch (fetchError) {
+      if (requestId === barsRequestId.current) {
+        setBarsLoadError(fetchError instanceof Error ? fetchError.message : String(fetchError));
+      }
+    } finally {
+      if (requestId === barsRequestId.current) setBarsLoading(false);
+    }
+  }
+
+  const selectedRun = savedRuns.find((run) => run.id === selectedRunId) || savedRuns[0] || null;
+  const compareRunA = savedRuns.find((run) => run.id === compareRunAId) || savedRuns[0] || null;
+  const compareRunB = savedRuns.find((run) => run.id === compareRunBId) || savedRuns[1] || null;
+
+  return (
+    <section className="strategy-lab-section">
+      <div className="strategy-section-heading">
+        <div>
+          <p className="eyebrow">VERSION COMPARISON</p>
+          <h2>Did the strategy improve?</h2>
+          <p>Saved backtests are grouped by strategy version, with the most recent runs first.</p>
+        </div>
+      </div>
+
+      <div className="version-compare-toolbar">
+        <label>
+          Strategy
+          <select value={compareStrategyId} onChange={(event) => setCompareStrategyId(event.target.value)}>
+            <option value="">Select strategy</option>
+            {strategies.map((strategy) => (
+              <option value={strategy.id} key={strategy.id}>{strategy.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {!compareStrategyId || savedRuns.length === 0 ? (
+        <EmptyEngineState
+          title="No completed versions to compare"
+          description="Run a backtest and it will save automatically here, then you can compare net P&L, win rate, profit factor, and trade count from earlier results."
+        />
+      ) : (
+        <>
+          <div className="version-compare-cards">
+            {savedRuns.map((run) => (
+              <button
+                type="button"
+                key={run.id}
+                className={`version-compare-card${selectedRunId === run.id ? " selected" : ""}`}
+                onClick={() => openSavedRun(run)}
+              >
+                <div className="version-compare-card-header">
+                  <strong>{run.asset}</strong>
+                  <span>{run.timeframe}</span>
+                </div>
+                <small>{run.session}</small>
+                <small>{run.startDate} → {run.endDate}</small>
+                <div className="version-compare-metrics">
+                  <span>Net P&amp;L<strong>{formatCurrency(run.metrics?.netPnl ?? 0)}</strong></span>
+                  <span>Win rate<strong>{formatMetric(run.metrics?.winRate ?? 0)}%</strong></span>
+                  <span>Profit factor<strong>{formatMetric(run.metrics?.profitFactor ?? 0)}</strong></span>
+                  <span>Trades<strong>{run.metrics?.totalTrades ?? run.trades?.length ?? 0}</strong></span>
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div className="version-compare-compare-panel">
+            <div className="version-compare-side-by-side">
+              <label>
+                Run A
+                <select value={compareRunAId} onChange={(event) => setCompareRunAId(event.target.value)}>
+                  <option value="">Select result</option>
+                  {savedRuns.map((run) => (<option value={run.id} key={`a-${run.id}`}>{run.asset} · {run.startDate}</option>))}
+                </select>
+              </label>
+              <label>
+                Run B
+                <select value={compareRunBId} onChange={(event) => setCompareRunBId(event.target.value)}>
+                  <option value="">Select result</option>
+                  {savedRuns.map((run) => (<option value={run.id} key={`b-${run.id}`}>{run.asset} · {run.startDate}</option>))}
+                </select>
+              </label>
+            </div>
+
+            {(compareRunA || compareRunB) && (
+              <div className="version-compare-table-wrap">
+                <table className="version-compare-table">
+                  <thead>
+                    <tr>
+                      <th>Metric</th>
+                      <th>{compareRunA ? `${compareRunA.asset} · ${compareRunA.startDate}` : "Run A"}</th>
+                      <th>{compareRunB ? `${compareRunB.asset} · ${compareRunB.startDate}` : "Run B"}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ["Net P&L", compareRunA?.metrics?.netPnl ?? 0, compareRunB?.metrics?.netPnl ?? 0],
+                      ["Win rate", compareRunA?.metrics?.winRate ?? 0, compareRunB?.metrics?.winRate ?? 0],
+                      ["Profit factor", compareRunA?.metrics?.profitFactor ?? 0, compareRunB?.metrics?.profitFactor ?? 0],
+                      ["Trade count", compareRunA?.metrics?.totalTrades ?? compareRunA?.trades?.length ?? 0, compareRunB?.metrics?.totalTrades ?? compareRunB?.trades?.length ?? 0],
+                    ].map(([label, left, right]) => (
+                      <tr key={label}>
+                        <td>{label}</td>
+                        <td>{label === "Net P&L" ? formatCurrency(left) : label === "Win rate" ? `${formatMetric(left)}%` : label === "Profit factor" ? formatMetric(left) : left}</td>
+                        <td>{label === "Net P&L" ? formatCurrency(right) : label === "Win rate" ? `${formatMetric(right)}%` : label === "Profit factor" ? formatMetric(right) : right}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {selectedRun && (
+            <div className="version-compare-details">
+              <div className="backtest-results-placeholder">
+                <p className="eyebrow">SELECTED RUN</p>
+                <h3>{selectedRun.asset} · {selectedRun.timeframe}</h3>
+                <p className="backtest-result-caption">Result parameters: {selectedRun.asset} · {selectedRun.timeframe} · {selectedRun.session} · {selectedRun.startDate} to {selectedRun.endDate}</p>
+                <div className="backtest-result-labels">
+                  <span>Total trades<strong>{selectedRun.metrics?.totalTrades ?? selectedRun.trades?.length ?? 0}</strong></span>
+                  <span>Win rate<strong>{formatMetric(selectedRun.metrics?.winRate ?? 0)}%</strong></span>
+                  <span>Net P&amp;L<strong>{formatCurrency(selectedRun.metrics?.netPnl ?? 0)}</strong></span>
+                  <span>Profit factor<strong>{formatMetric(selectedRun.metrics?.profitFactor ?? 0)}</strong></span>
+                  <span>Max drawdown<strong>{formatCurrency(selectedRun.metrics?.maxDrawdown ?? 0)}</strong></span>
+                  <span>Expectancy<strong>{formatCurrency(selectedRun.metrics?.expectancy ?? 0)}</strong></span>
+                </div>
+                {selectedRun.metrics?.equityCurve && (
+                  <div className="backtest-equity-chart">
+                    <p className="eyebrow">EQUITY CURVE</p>
+                    <ResponsiveContainer width="100%" height={220}>
+                      <LineChart data={selectedRun.metrics.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                        <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.08)" />
+                        <XAxis type="number" dataKey="timestamp" scale="time" domain={["dataMin", "dataMax"]} tickCount={6} minTickGap={24} tickFormatter={(value) => formatChartTimestamp(value, selectedRun.timeframe)} stroke="#7f94a8" tick={{ fontSize: 10 }} />
+                        <YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} />
+                        <Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={(value) => formatChartTimestamp(value, selectedRun.timeframe)} />
+                        <Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
+                <ExpandedMetrics result={selectedRun.metrics || {}} />
+                {barsLoading && <p className="version-compare-bars-loading" role="status">Loading historical bars for the trade charts...</p>}
+                {barsLoadError && (
+                  <div className="version-compare-bars-error" role="alert">
+                    <p className="strategy-error-message">Could not load historical bars: {barsLoadError}</p>
+                    <button type="button" className="strategy-primary-action" onClick={() => openSavedRun(selectedRun)}>Retry bar load</button>
+                  </div>
+                )}
+                <TradeLog trades={selectedRun.trades || []} bars={selectedRunBars || []} asset={selectedRun.asset} />
+              </div>
+            </div>
+          )}
+        </>
+      )}
     </section>
   );
 }
@@ -419,8 +684,8 @@ function StrategyLab({ initialView = "library", userId, onStrategiesChange }) {
       <LabHeader view={view} onViewChange={setView} />
       {view === "library" && <StrategyLibrary strategies={strategies} onCreate={createStrategy} onSelect={selectStrategy} />}
       {view === "builder" && <StrategyBuilder draft={draft} setDraft={setDraft} onSave={saveVersion} selectedStrategy={selectedStrategy} />}
-      {view === "backtesting" && <BacktestWorkspace strategies={strategies} request={request} setRequest={setRequest} />}
-      {view === "compare" && <section className="strategy-lab-section"><div className="strategy-section-heading"><div><p className="eyebrow">VERSION COMPARISON</p><h2>Did the strategy improve?</h2><p>Compare measured results only after real backtest runs exist.</p></div></div><EmptyEngineState title="No completed versions to compare" description="Version comparison will show win rate, profit factor, net P&amp;L, drawdown, expectancy, and trade count once a real engine produces results." /></section>}
+      {view === "backtesting" && <BacktestWorkspace strategies={strategies} request={request} setRequest={setRequest} userId={userId} />}
+      {view === "compare" && <VersionCompare strategies={strategies} selectedStrategy={selectedStrategy} userId={userId} />}
     </div>
   );
 }
