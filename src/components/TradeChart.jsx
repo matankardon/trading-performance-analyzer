@@ -168,11 +168,11 @@ function TradeChart({ bars, trade, asset, onClose }) {
     chart.timeScale().fitContent();
     drawAnnotations();
     chart.timeScale().subscribeVisibleLogicalRangeChange(drawAnnotations);
-    chart.subscribeSizeChange(drawAnnotations);
+    chart.timeScale().subscribeSizeChange(drawAnnotations);
 
     return () => {
       chart.timeScale().unsubscribeVisibleLogicalRangeChange(drawAnnotations);
-      chart.unsubscribeSizeChange(drawAnnotations);
+      chart.timeScale().unsubscribeSizeChange(drawAnnotations);
       chart.remove();
     };
   }, [bars, chartBars, outcome, trade]);

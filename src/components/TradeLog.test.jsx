@@ -68,13 +68,13 @@ describe("TradeLog chart drill-down", () => {
       timeToCoordinate: (time) => Number(time) / 1000,
       subscribeVisibleLogicalRangeChange: vi.fn(),
       unsubscribeVisibleLogicalRangeChange: vi.fn(),
+      subscribeSizeChange: vi.fn(),
+      unsubscribeSizeChange: vi.fn(),
     };
     const removeChart = vi.fn();
     createChart.mockReturnValue({
       addSeries,
       timeScale: () => timeScale,
-      subscribeSizeChange: vi.fn(),
-      unsubscribeSizeChange: vi.fn(),
       applyOptions: vi.fn(),
       remove: removeChart,
     });

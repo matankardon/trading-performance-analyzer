@@ -8,10 +8,10 @@ const chartApi = {
     fitContent: vi.fn(),
     subscribeVisibleLogicalRangeChange: vi.fn(),
     unsubscribeVisibleLogicalRangeChange: vi.fn(),
+    subscribeSizeChange: vi.fn(),
+    unsubscribeSizeChange: vi.fn(),
     timeToCoordinate: vi.fn(() => 120),
   })),
-  subscribeSizeChange: vi.fn(),
-  unsubscribeSizeChange: vi.fn(),
   remove: vi.fn(),
 };
 
@@ -45,8 +45,10 @@ describe("TradeChart", () => {
       close: 100 + index + 1,
     }));
 
-    render(
-      <TradeChart
+    let rendered;
+    expect(() => {
+      rendered = render(
+        <TradeChart
         bars={bars}
         trade={{
           direction: "long",
@@ -67,8 +69,9 @@ describe("TradeChart", () => {
         }}
         asset="AAPL"
         onClose={() => {}}
-      />,
-    );
+        />,
+      );
+    }).not.toThrow();
 
     expect(screen.getByText("TRADE ON CHART")).toBeInTheDocument();
     expect(chartApi.addSeries).toHaveBeenCalledWith(
