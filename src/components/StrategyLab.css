@@ -526,6 +526,52 @@
   line-height: 1.5;
 }
 
+.backtest-result-caption {
+  margin-top: 16px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.backtest-trade-log {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.backtest-trade-table-wrap {
+  overflow-x: auto;
+  margin-top: 9px;
+}
+
+.backtest-trade-log table {
+  width: 100%;
+  min-width: 860px;
+  border-collapse: collapse;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.backtest-trade-log th,
+.backtest-trade-log td {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--line-soft);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.backtest-trade-log th {
+  color: var(--ink-faint);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.backtest-trade-log td {
+  font-family: var(--font-mono);
+}
+
 .backtest-equity-chart {
   margin-top: 22px;
   padding-top: 18px;

@@ -60,6 +60,12 @@ describe("strategy models", () => {
       riskRewardRatio: "2",
       commissionPerTrade: "1",
       slippagePct: "0.05",
+      swingSize: "2",
+      sweepDetectionLookback: "5",
+      sweepLookback: "10",
+      setupLookback: "20",
+      stochasticKPeriod: "14",
+      stochasticDPeriod: "3",
     });
   });
 });

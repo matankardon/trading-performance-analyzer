@@ -29,6 +29,9 @@ export async function fetchHistoricalBars(asset, timeframe, startDate, endDate) 
     } catch {
       functionError = null;
     }
+    if (functionError?.error === "AUTH_REQUIRED" || error.status === 401) {
+      throw new Error("Your session expired. Please sign in again.");
+    }
     throw new Error(getFunctionErrorMessage(functionError) || getFunctionErrorMessage(error));
   }
 

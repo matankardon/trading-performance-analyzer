@@ -1,6 +1,7 @@
 import { detectFVGs, detectLiquiditySweeps } from "./patternDetection";
 import { detectMSS, detectOrderBlocks, detectSwingPoints } from "./structureDetection";
 import { calculateStochastic, isStochasticConfirming } from "./stochastic";
+import { isTimestampInSession } from "./sessionWindows";
 
 const conditionDefaults = {
   requireSweep: true,
@@ -65,6 +66,7 @@ export function ictEntryRule(bars, options = {}) {
   const setupLookback = options.setupLookback ?? 20;
   const stochasticKPeriod = options.stochasticKPeriod ?? 14;
   const stochasticDPeriod = options.stochasticDPeriod ?? 3;
+  const session = options.session ?? "All sessions";
 
   for (const [name, value] of [
     ["sweepLookback", sweepLookback],
@@ -102,6 +104,7 @@ export function ictEntryRule(bars, options = {}) {
     return directions.some((side) => {
       const type = getDirectionType(side);
       if (!type) return false;
+      if (!isTimestampInSession(bars[index].timestamp, session)) return false;
       if (conditions.requireStoch && !isStochasticConfirming(stochastic[index], side)) return false;
 
       const relevantContexts = mssContexts.filter(({ event }) => (

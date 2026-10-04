@@ -22,8 +22,6 @@ const setupConditions = [
   ["stochasticConfirmation", "Stochastic Confirmation"],
 ];
 
-const qualities = ["A+ Setup", "Valid Setup", "Emotional / Rule Break"];
-
 function valueOf(trade) {
   return Number(trade.pnl || 0);
 }
@@ -215,12 +213,6 @@ function Analytics({ trades = [] }) {
     const matching = trades.filter((trade) => Boolean(trade[key]));
     const wins = matching.filter((trade) => valueOf(trade) > 0).length;
     return { label, trades: matching.length, winRate: matching.length ? Math.round((wins / matching.length) * 100) : 0 };
-  }), [trades]);
-
-  const qualityData = useMemo(() => qualities.map((name) => {
-    const matching = trades.filter((trade) => trade.tradeQuality === name);
-    const wins = matching.filter((trade) => valueOf(trade) > 0).length;
-    return { name, trades: matching.length, winRate: matching.length ? Math.round((wins / matching.length) * 100) : 0, pnl: matching.reduce((sum, trade) => sum + valueOf(trade), 0) };
   }), [trades]);
 
   const ruleBreakTrades = trades.filter((trade) => trade.ruleBreak);

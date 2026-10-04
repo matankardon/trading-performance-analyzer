@@ -23,22 +23,16 @@ import {
 } from "../models/strategy";
 import { runBacktest } from "../services/backtestEngine";
 import { calculateTakeProfitPercent } from "../services/backtestParameters";
+import { buildBacktestConfig } from "../services/backtestConfig";
 import { fetchHistoricalBars } from "../services/historicalDataService";
 import { ictEntryRule } from "../services/ictEntryRule";
+import { formatNewYorkTimestamp } from "../services/sessionWindows";
 import { supportedHistoricalTimeframes } from "../../supabase/functions/_shared/timeframe";
 import "./StrategyLab.css";
 
 const backtestAssets = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "SPY", "QQQ"];
 const backtestSessions = ["All sessions", "New York", "London", "Asia", "Overlap"];
 const recentBacktestAssetsStorageKey = "tradeCatalystRecentBacktestAssets";
-const defaultEntrySensitivity = {
-  swingSize: "2",
-  sweepDetectionLookback: "5",
-  sweepLookback: "10",
-  setupLookback: "20",
-  stochasticKPeriod: "14",
-  stochasticDPeriod: "3",
-};
 
 function HelpTooltip({ id, text }) {
   const [open, setOpen] = useState(false);
@@ -143,42 +137,6 @@ function StrategyBuilder({ draft, setDraft, onSave, selectedStrategy }) {
   );
 }
 
-function parseRiskPerTrade(value) {
-  const normalized = String(value).trim();
-  const hasPercentSign = normalized.endsWith("%");
-  const numericValue = Number(hasPercentSign ? normalized.slice(0, -1).trim() : normalized);
-  const riskPerTrade = hasPercentSign || numericValue > 1 ? numericValue / 100 : numericValue;
-  if (!Number.isFinite(riskPerTrade) || riskPerTrade <= 0 || riskPerTrade > 1) {
-    throw new Error("Risk per trade must be a number greater than 0 and no more than 100%.");
-  }
-  return riskPerTrade;
-}
-
-function parseStartingBalance(value) {
-  const startingBalance = Number(String(value).trim());
-  if (!Number.isFinite(startingBalance) || startingBalance <= 0) {
-    throw new Error("Starting balance must be a number greater than zero.");
-  }
-  return startingBalance;
-}
-
-function parsePricePercentage(value, fieldName) {
-  const normalized = String(value).trim().replace(/%$/, "");
-  const percentage = Number(normalized);
-  if (!Number.isFinite(percentage) || percentage <= 0 || percentage > 100) {
-    throw new Error(`${fieldName} must be greater than 0 and no more than 100%.`);
-  }
-  return percentage / 100;
-}
-
-function parseRiskRewardRatio(value) {
-  const ratio = Number(String(value).trim());
-  if (!Number.isFinite(ratio) || ratio <= 0) {
-    throw new Error("Risk:Reward ratio must be greater than zero.");
-  }
-  return ratio;
-}
-
 function formatPercentage(value) {
   if (!Number.isFinite(value)) return "-";
   return `${value.toFixed(2).replace(/\.00$/, "").replace(/(\.\d)0$/, "$1")}%`;
@@ -213,14 +171,6 @@ function formatChartTimestamp(value, timeframe) {
   return date.toLocaleDateString();
 }
 
-function getStrategyDirection(direction) {
-  const normalized = String(direction || "").toLowerCase();
-  if (normalized.includes("both") || (normalized.includes("long") && normalized.includes("short"))) {
-    return "both";
-  }
-  return normalized.includes("short") && !normalized.includes("long") ? "short" : "long";
-}
-
 function ExpandedMetrics({ result }) {
   const metrics = [
     ["Return %", `${formatMetric(result.returnPct)}%`, "return-percent", "Net P&L as a percentage of the starting balance."],
@@ -236,71 +186,65 @@ function ExpandedMetrics({ result }) {
   return <div className="backtest-expanded-metrics">{metrics.map(([label, value, helpId, helpText]) => <span key={label}><span className="backtest-metric-label">{label}<HelpTooltip id={helpId} text={helpText} /></span><strong>{value}</strong></span>)}</div>;
 }
 
+function ResultCaption({ context }) {
+  return <p className="backtest-result-caption">Result parameters: {context.asset} · {context.timeframe} · {context.session} · {context.startDate} to {context.endDate} · SL {context.stopLoss}% · R:R {context.riskReward}</p>;
+}
+
+function TradeLog({ trades }) {
+  return <div className="backtest-trade-log"><p className="eyebrow">TRADE LOG</p><div className="backtest-trade-table-wrap"><table><thead><tr><th>Entry time</th><th>Exit time</th><th>Direction</th><th>Entry price</th><th>Exit price</th><th>Exit reason</th><th>P&amp;L</th><th>Bars held</th></tr></thead><tbody>{trades.length ? trades.map((trade, index) => <tr key={`${trade.entryIndex}-${trade.exitIndex}-${index}`}><td>{formatNewYorkTimestamp(trade.entryTimestamp)}</td><td>{formatNewYorkTimestamp(trade.exitTimestamp)}</td><td>{trade.direction}</td><td>{trade.entryPrice.toFixed(4)}</td><td>{trade.exitPrice.toFixed(4)}</td><td>{trade.exitReason === "stop_loss" ? "SL" : trade.exitReason === "take_profit" ? "TP" : "end of data"}</td><td>{formatCurrency(trade.pnl)}</td><td>{trade.barsHeld}</td></tr>) : <tr><td colSpan="8">No trades recorded.</td></tr>}</tbody></table></div></div>;
+}
+
 function BacktestWorkspace({ strategies, request, setRequest }) {
   const [bars, setBars] = useState(null);
   const [backtestResult, setBacktestResult] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [recentAssets, setRecentAssets] = useState(loadRecentBacktestAssets);
-  const [entrySensitivity, setEntrySensitivity] = useState(defaultEntrySensitivity);
+  const [resultContext, setResultContext] = useState(null);
   const requestInProgress = useRef(false);
   const selectedStrategy = strategies.find((strategy) => strategy.id === request.strategyId);
   const versions = selectedStrategy?.versions || [];
   const selectedVersion = versions.find((version) => version.id === request.versionId);
   const update = (field, value) => setRequest((previous) => ({ ...previous, [field]: value }));
-  const updateSensitivity = (field, value) => setEntrySensitivity((previous) => ({ ...previous, [field]: value }));
 
   async function handleRunBacktest() {
     if (requestInProgress.current) return;
     requestInProgress.current = true;
     setIsLoading(true);
     setError("");
+    setBacktestResult(null);
+    setResultContext(null);
     try {
       if (!selectedVersion) {
         throw new Error("Select a strategy version to use its saved entry conditions.");
       }
-      const riskPerTrade = parseRiskPerTrade(request.riskPerTrade);
-      const startingBalance = parseStartingBalance(request.startingBalance);
-      const stopLossPct = parsePricePercentage(request.stopLossPct, "Stop-loss");
-      const riskRewardRatio = parseRiskRewardRatio(request.riskRewardRatio);
-      const takeProfitPct = calculateTakeProfitPercent(request.stopLossPct, riskRewardRatio) / 100;
-      const commissionPerTrade = Number(String(request.commissionPerTrade).trim());
-      if (!Number.isFinite(commissionPerTrade) || commissionPerTrade < 0) {
-        throw new Error("Commission per trade must be a non-negative number.");
-      }
-      const slippagePct = parsePricePercentage(request.slippagePct, "Slippage");
-      const asset = request.asset.trim().toUpperCase();
+      const config = buildBacktestConfig(request, { ...selectedVersion, direction: selectedStrategy?.direction });
+      const asset = config.historicalRequest.asset;
       if (!asset) throw new Error("Enter an asset ticker before running the backtest.");
-      const fetchedBars = await fetchHistoricalBars(asset, request.timeframe, request.startDate, request.endDate);
-      const conditions = selectedVersion.conditions || {};
-      const entryRule = ictEntryRule(fetchedBars, {
-        requireSweep: Boolean(conditions.liquiditySweep),
-        requireMss: Boolean(conditions.mss),
-        requireFvg: Boolean(conditions.fvg),
-        requireDisplacement: Boolean(conditions.displacement),
-        requireOrderBlock: Boolean(conditions.orderBlock),
-        requireStoch: Boolean(conditions.stochasticConfirmation),
-        swingSize: Number(entrySensitivity.swingSize),
-        sweepDetectionLookback: Number(entrySensitivity.sweepDetectionLookback),
-        sweepLookback: Number(entrySensitivity.sweepLookback),
-        setupLookback: Number(entrySensitivity.setupLookback),
-        stochasticKPeriod: Number(entrySensitivity.stochasticKPeriod),
-        stochasticDPeriod: Number(entrySensitivity.stochasticDPeriod),
-      });
+      const fetchedBars = await fetchHistoricalBars(
+        config.historicalRequest.asset,
+        config.historicalRequest.timeframe,
+        config.historicalRequest.startDate,
+        config.historicalRequest.endDate,
+      );
+      const entryRule = ictEntryRule(fetchedBars, config.entryRuleOptions);
       const result = runBacktest({
         bars: fetchedBars,
         entryRule,
-        stopLossPct,
-        takeProfitPct,
-        riskPerTrade,
-        startingBalance,
-        commissionPerTrade,
-        slippagePct,
-        direction: getStrategyDirection(selectedStrategy?.direction),
+        ...config.engine,
         debugSignals: new URLSearchParams(window.location.search).get("debugBacktestSignals") === "1",
       });
       setBars(fetchedBars);
       setBacktestResult(result);
+      setResultContext({
+        asset,
+        timeframe: request.timeframe,
+        session: request.session || "All sessions",
+        startDate: request.startDate,
+        endDate: request.endDate,
+        stopLoss: request.stopLossPct,
+        riskReward: request.riskRewardRatio,
+      });
       setRecentAssets((previous) => saveRecentBacktestAsset(asset, previous));
     } catch (fetchError) {
       setBars(null);
@@ -325,7 +269,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
         <label><FieldLabel helpId="timeframe" helpText="Candle size. Smaller means more bars and more noise; wide ranges on small timeframes load slowly.">Timeframe</FieldLabel><select value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)}><option value="">Select timeframe</option>{supportedHistoricalTimeframes.map(({ value }) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label><FieldLabel helpId="start-date" helpText="Period of history to test. More history generally makes results more reliable.">Start date</FieldLabel><input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
         <label><FieldLabel helpId="end-date" helpText="Period of history to test. More history generally makes results more reliable.">End date</FieldLabel><input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>
-        <label><FieldLabel helpId="session" helpText="Only allow entries during this trading session.">Session</FieldLabel><select value={request.session || "All sessions"} onChange={(event) => update("session", event.target.value)}>{backtestSessions.map((session) => <option value={session} key={session}>{session}</option>)}</select></label>
+        <label><FieldLabel helpId="session" helpText="Only allow entries during this America/New_York window: Asia 19:00–04:00, London 03:00–12:00, New York 08:00–17:00, or Overlap 08:00–12:00.">Session</FieldLabel><select value={request.session || "All sessions"} onChange={(event) => update("session", event.target.value)}>{backtestSessions.map((session) => <option value={session} key={session}>{session}</option>)}</select></label>
         <label><FieldLabel helpId="risk-per-trade" helpText="How much of your balance to risk per trade, e.g. 1 = 1%.">Risk per trade</FieldLabel><input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label>
         <label><FieldLabel helpId="starting-balance" helpText="Simulated account size in dollars.">Starting balance</FieldLabel><input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label>
         <label><FieldLabel helpId="risk-reward" helpText="Take-profit distance as a multiple of your stop-loss, e.g. 2 means win twice what you risk.">Risk:Reward ratio</FieldLabel><input type="number" min="0.01" step="0.01" value={request.riskRewardRatio} onChange={(event) => update("riskRewardRatio", event.target.value)} /><small>→ {formatPercentage(calculateTakeProfitPercent(request.stopLossPct, request.riskRewardRatio))} take-profit</small></label>
@@ -336,18 +280,20 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
           <label><FieldLabel helpId="stop-loss" helpText="How far price may move against you before exit, e.g. 0.5.">Stop-loss %</FieldLabel><input type="number" min="0.01" max="100" step="0.01" value={request.stopLossPct} onChange={(event) => update("stopLossPct", event.target.value)} /></label>
           <label><FieldLabel helpId="commission" helpText="Flat fee per round trip, e.g. 1 dollar.">Commission per trade ($)</FieldLabel><input type="number" min="0" step="0.01" value={request.commissionPerTrade} onChange={(event) => update("commissionPerTrade", event.target.value)} /></label>
           <label><FieldLabel helpId="slippage" helpText="Adverse fill difference applied to entry and exit, e.g. 0.05%.">Slippage %</FieldLabel><input type="number" min="0" max="100" step="0.01" value={request.slippagePct} onChange={(event) => update("slippagePct", event.target.value)} /></label>
-          <label><FieldLabel helpId="swing-window" helpText="Bars required on each side of a pivot. Raising it confirms fewer, wider swings.">Swing pivot window</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.swingSize} onChange={(event) => updateSensitivity("swingSize", event.target.value)} /></label>
-          <label><FieldLabel helpId="sweep-detection-lookback" helpText="Prior bars used to define the range a wick must sweep. Raising it compares against a wider range.">Sweep detection lookback</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.sweepDetectionLookback} onChange={(event) => updateSensitivity("sweepDetectionLookback", event.target.value)} /></label>
-          <label><FieldLabel helpId="sweep-lookback" helpText="Maximum bars allowed between a sweep and MSS. Raising it allows older sweeps to qualify.">Sweep-to-MSS lookback</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.sweepLookback} onChange={(event) => updateSensitivity("sweepLookback", event.target.value)} /></label>
-          <label><FieldLabel helpId="retest-window" helpText="Maximum bars after MSS for an order-block or FVG retest. Raising it allows later retests.">MSS retest window</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.setupLookback} onChange={(event) => updateSensitivity("setupLookback", event.target.value)} /></label>
-          <label><FieldLabel helpId="stochastic-k" helpText="Number of bars in the stochastic high/low range. Raising it uses a wider range and changes %K more slowly.">Stochastic K period</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.stochasticKPeriod} onChange={(event) => updateSensitivity("stochasticKPeriod", event.target.value)} /></label>
-          <label><FieldLabel helpId="stochastic-d" helpText="Bars averaged for %D. Raising it smooths %D and makes confirmation less responsive.">Stochastic D period</FieldLabel><input type="number" min="1" step="1" value={entrySensitivity.stochasticDPeriod} onChange={(event) => updateSensitivity("stochasticDPeriod", event.target.value)} /></label>
+          <label><FieldLabel helpId="swing-window" helpText="Bars required on each side of a pivot. Raising it confirms fewer, wider swings.">Swing pivot window</FieldLabel><input type="number" min="1" step="1" value={request.swingSize} onChange={(event) => update("swingSize", event.target.value)} /></label>
+          <label><FieldLabel helpId="sweep-detection-lookback" helpText="Prior bars used to define the range a wick must sweep. Raising it compares against a wider range.">Sweep detection lookback</FieldLabel><input type="number" min="1" step="1" value={request.sweepDetectionLookback} onChange={(event) => update("sweepDetectionLookback", event.target.value)} /></label>
+          <label><FieldLabel helpId="sweep-lookback" helpText="Maximum bars allowed between a sweep and MSS. Raising it allows older sweeps to qualify.">Sweep-to-MSS lookback</FieldLabel><input type="number" min="1" step="1" value={request.sweepLookback} onChange={(event) => update("sweepLookback", event.target.value)} /></label>
+          <label><FieldLabel helpId="retest-window" helpText="Maximum bars after MSS for an order-block or FVG retest. Raising it allows later retests.">MSS retest window</FieldLabel><input type="number" min="1" step="1" value={request.setupLookback} onChange={(event) => update("setupLookback", event.target.value)} /></label>
+          <label><FieldLabel helpId="stochastic-k" helpText="Number of bars in the stochastic high/low range. Raising it uses a wider range and changes %K more slowly.">Stochastic K period</FieldLabel><input type="number" min="1" step="1" value={request.stochasticKPeriod} onChange={(event) => update("stochasticKPeriod", event.target.value)} /></label>
+          <label><FieldLabel helpId="stochastic-d" helpText="Bars averaged for %D. Raising it smooths %D and makes confirmation less responsive.">Stochastic D period</FieldLabel><input type="number" min="1" step="1" value={request.stochasticDPeriod} onChange={(event) => update("stochasticDPeriod", event.target.value)} /></label>
         </div>
       </details>
       <div className="backtest-action-row"><button type="button" className="strategy-primary-action" onClick={handleRunBacktest} disabled={isLoading}>{isLoading ? "Loading historical data..." : "Run backtest"}</button><span role="status" aria-live="polite">{isLoading ? "Loading historical data. Wide intraday ranges may take a moment." : "Uses real historical bars and the selected version&apos;s enabled conditions."}</span></div>
       {error && <p role="alert" className="strategy-error-message">{error}</p>}
+      {resultContext && <ResultCaption context={resultContext} />}
       <div className="backtest-results-placeholder"><p className="eyebrow">BACKTEST RESULTS</p><h3>{backtestResult ? "Execution summary" : "Results will appear here"}</h3><p className="backtest-disclaimer">Entries use the selected version&apos;s enabled liquidity sweep, MSS, FVG, order-block, and stochastic conditions. All enabled gates must pass; when both FVG and order block are enabled, either matching directional-zone retest satisfies that zone gate. This is our own rule-based confluence implementation of ICT concepts; detection is based on available OHLC bars and should not be treated as infallible ground truth. Displacement detection is not implemented, so a version requiring it cannot be run.</p>{backtestResult && backtestResult.totalTrades < 30 && <p className="backtest-significance-warning">Only {backtestResult.totalTrades} trades — results are not statistically meaningful yet. Aim for 100+ trades before trusting these metrics.</p>}{backtestResult ? <><div className="backtest-result-labels"><span>Total trades<strong>{backtestResult.totalTrades}</strong></span><span>Win rate<strong>{formatMetric(backtestResult.winRate)}%</strong></span><span>Net P&amp;L<strong>{formatCurrency(backtestResult.netPnl)}</strong></span><span>Profit factor<strong>{formatMetric(backtestResult.profitFactor)}</strong></span><span>Max drawdown<strong>{formatCurrency(backtestResult.maxDrawdown)}</strong></span><span>Expectancy<strong>{formatCurrency(backtestResult.expectancy)}</strong></span></div><div className="backtest-equity-chart"><p className="eyebrow">EQUITY CURVE</p><ResponsiveContainer width="100%" height={240}><LineChart data={backtestResult.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}><CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.08)" /><XAxis type="number" dataKey="timestamp" scale="time" domain={["dataMin", "dataMax"]} tickCount={6} minTickGap={24} tickFormatter={(value) => formatChartTimestamp(value, request.timeframe)} stroke="#7f94a8" tick={{ fontSize: 10 }} /><YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} /><Tooltip formatter={(value) => [formatCurrency(value), "Equity"]} labelFormatter={(value) => formatChartTimestamp(value, request.timeframe)} /><Line type="monotone" dataKey="equity" stroke="#65c4c4" strokeWidth={2} dot={false} /></LineChart></ResponsiveContainer></div></> : <small>Run a test to calculate metrics from the fetched historical bars.</small>}</div>
       {backtestResult && <ExpandedMetrics result={backtestResult} />}
+      <TradeLog trades={backtestResult?.trades || []} />
     </section>
   );
 }

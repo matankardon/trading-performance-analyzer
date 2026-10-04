@@ -24,6 +24,15 @@ function validatePercentage(value, name) {
 }
 
 function calculateExit(position, bar) {
+  const openBeyondStop = position.direction === "long"
+    ? bar.open <= position.stopLoss
+    : bar.open >= position.stopLoss;
+  const openBeyondTarget = position.direction === "long"
+    ? bar.open >= position.takeProfit
+    : bar.open <= position.takeProfit;
+  if (openBeyondStop) return { price: bar.open, reason: "stop_loss" };
+  if (openBeyondTarget) return { price: bar.open, reason: "take_profit" };
+
   const stopTouched = position.direction === "long"
     ? bar.low <= position.stopLoss
     : bar.high >= position.stopLoss;

@@ -92,6 +92,30 @@ describe("backtest engine", () => {
     expect(noCostResult.trades[0].pnl - costResult.trades[0].pnl).toBeCloseTo(3.05, 6);
   });
 
+  it("fills gaps at the opening price beyond stop or target", () => {
+    const stopGap = runBacktest({
+      bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 101, 99, 100), bar(3, 90, 95, 89, 92)],
+      entryRule: ({ index }) => index === 0,
+      stopLossPct: 0.05,
+      takeProfitPct: 0.1,
+      riskPerTrade: 0.01,
+      startingBalance: 10000,
+      direction: "long",
+    });
+    const targetGap = runBacktest({
+      bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 101, 99, 100), bar(3, 115, 116, 114, 115)],
+      entryRule: ({ index }) => index === 0,
+      stopLossPct: 0.05,
+      takeProfitPct: 0.1,
+      riskPerTrade: 0.01,
+      startingBalance: 10000,
+      direction: "long",
+    });
+
+    expect(stopGap.trades[0]).toMatchObject({ exitPrice: 90, exitReason: "stop_loss" });
+    expect(targetGap.trades[0]).toMatchObject({ exitPrice: 115, exitReason: "take_profit" });
+  });
+
   it("supports short trades and closes an open position at end of data", () => {
     const result = runBacktest({
       bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 100, 90, 95)],

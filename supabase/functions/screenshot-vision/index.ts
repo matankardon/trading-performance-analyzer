@@ -282,11 +282,6 @@ Deno.serve(async (request) => {
   }
 
   const apiKey = Deno.env.get("OPENAI_API_KEY");
-  console.log("OPENAI_API_KEY diagnostics:", {
-    defined: Boolean(apiKey),
-    length: apiKey?.length ?? 0,
-    startsWithSk: apiKey?.startsWith("sk-") ?? false,
-  });
   if (!apiKey) {
     return errorResponse("OPENAI_NOT_CONFIGURED", "OPENAI_API_KEY is not configured.", 500);
   }

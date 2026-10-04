@@ -75,6 +75,28 @@ describe("ICT composite entry rule", () => {
     expect(entryRule({ bars, index: 3, direction: "long" })).toBe(true);
   });
 
+  it("uses session as an entry-only gate and respects New York DST", () => {
+    const makeBars = (signalTimestamp) => [
+      bar(10, 11, 9, 10, 0),
+      bar(10, 11, 9, 10, 1),
+      bar(12, 14, 12, 13, 2),
+      bar(13, 14, 10, 13, signalTimestamp),
+    ];
+    const options = {
+      requireSweep: false,
+      requireMss: false,
+      requireFvg: true,
+      requireOrderBlock: false,
+      requireStoch: false,
+      session: "New York",
+    };
+
+    expect(longSignalIndices(makeBars(Date.parse("2024-01-08T14:00:00Z")), options)).toEqual([3]);
+    expect(longSignalIndices(makeBars(Date.parse("2024-01-08T12:00:00Z")), options)).toEqual([]);
+    expect(longSignalIndices(makeBars(Date.parse("2024-03-10T12:30:00Z")), options)).toEqual([3]);
+    expect(longSignalIndices(makeBars(Date.parse("2024-03-10T11:30:00Z")), options)).toEqual([]);
+  });
+
   it("supports independently disabled conditions while retaining selected gates", () => {
     const bars = confluenceBars();
     bars[7] = { ...bars[7], low: 7.5 };
