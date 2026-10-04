@@ -8,19 +8,32 @@ function parseRequiredNumber(value, label, { percent = false, allowZero = false 
   return percent ? number / 100 : number;
 }
 
-function parseRiskPerTrade(value) {
-  const normalized = String(value ?? "").trim();
-  const numericValue = Number(normalized.replace(/%$/, ""));
-  const riskPerTrade = normalized.endsWith("%") || numericValue > 1 ? numericValue / 100 : numericValue;
-  if (!Number.isFinite(riskPerTrade) || riskPerTrade <= 0 || riskPerTrade > 1) {
+function parseRiskPerTradePercent(value) {
+  const numericValue = Number(String(value ?? "").trim().replace(/%$/, ""));
+  if (!Number.isFinite(numericValue) || numericValue <= 0 || numericValue > 100) {
     throw new Error("Risk per trade must be a number greater than 0 and no more than 100%.");
   }
-  return riskPerTrade;
+  return numericValue / 100;
 }
 
 export function buildBacktestConfig(request, strategyVersion = {}) {
   const stopLossPercent = parseRequiredNumber(request.stopLossPct, "Stop-loss", { percent: false });
   const riskRewardRatio = parseRequiredNumber(request.riskRewardRatio, "Risk:Reward ratio");
+  const startingBalance = parseRequiredNumber(request.startingBalance, "Starting balance");
+  const riskMode = request.riskMode || "percent";
+  const riskInput = Number(String(request.riskPerTrade ?? "").trim().replace(/%$/, ""));
+  let riskPerTrade;
+  let riskCapital;
+  if (riskMode === "dollars") {
+    if (!Number.isFinite(riskInput) || riskInput <= 0 || riskInput > startingBalance) {
+      throw new Error("Dollar risk must be greater than zero and no more than starting balance.");
+    }
+    riskCapital = riskInput;
+  } else if (riskMode === "percent") {
+    riskPerTrade = parseRiskPerTradePercent(request.riskPerTrade);
+  } else {
+    throw new Error("Risk mode must be percent or dollars.");
+  }
   const conditions = strategyVersion.conditions || {};
   const sensitivity = {
     swingSize: Number(request.swingSize),
@@ -45,8 +58,8 @@ export function buildBacktestConfig(request, strategyVersion = {}) {
       endDate: request.endDate,
     },
     engine: {
-      riskPerTrade: parseRiskPerTrade(request.riskPerTrade),
-      startingBalance: parseRequiredNumber(request.startingBalance, "Starting balance"),
+      ...(riskMode === "dollars" ? { riskCapital } : { riskPerTrade }),
+      startingBalance,
       stopLossPct: stopLossPercent / 100,
       takeProfitPct: calculateTakeProfitPercent(stopLossPercent, riskRewardRatio) / 100,
       commissionPerTrade: parseRequiredNumber(request.commissionPerTrade, "Commission per trade", { allowZero: true }),

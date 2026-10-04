@@ -209,7 +209,8 @@ export function runBacktest({
   entryRule,
   stopLossPct,
   takeProfitPct,
-  riskPerTrade,
+  riskPerTrade = 0,
+  riskCapital: requestedRiskCapital,
   startingBalance,
   direction = "long",
   debugSignals = false,
@@ -219,7 +220,11 @@ export function runBacktest({
   validateBars(bars);
   validatePercentage(stopLossPct, "stopLossPct");
   validatePercentage(takeProfitPct, "takeProfitPct");
-  validatePercentage(riskPerTrade, "riskPerTrade");
+  if (requestedRiskCapital === undefined) {
+    validatePercentage(riskPerTrade, "riskPerTrade");
+  } else if (!isFiniteNumber(requestedRiskCapital) || requestedRiskCapital <= 0) {
+    throw new Error("riskCapital must be greater than zero.");
+  }
   validatePercentage(slippagePct, "slippagePct");
   if (!isFiniteNumber(commissionPerTrade) || commissionPerTrade < 0) {
     throw new Error("commissionPerTrade must be a non-negative number.");
@@ -239,7 +244,7 @@ export function runBacktest({
 
   const trades = [];
   const equityCurve = [];
-  const riskCapital = startingBalance * riskPerTrade;
+  const riskCapital = requestedRiskCapital ?? startingBalance * riskPerTrade;
   let balance = startingBalance;
   let position = null;
   let pendingDirection = null;

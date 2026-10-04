@@ -151,6 +151,21 @@ describe("backtest engine", () => {
     expect(result.sizeCappedTradeCount).toBe(0);
   });
 
+  it("uses explicit dollar risk capital directly for position sizing", () => {
+    const result = runBacktest({
+      bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 101, 99, 100)],
+      entryRule: ({ index }) => index === 0,
+      stopLossPct: 0.1,
+      takeProfitPct: 0.2,
+      riskCapital: 250,
+      startingBalance: 3000,
+      direction: "long",
+    });
+
+    expect(result.trades[0].positionSize).toBeCloseTo(25, 6);
+    expect(result.trades[0].stopLoss).toBeCloseTo(90, 6);
+  });
+
   it("supports short trades and closes an open position at end of data", () => {
     const result = runBacktest({
       bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 100, 90, 95)],

@@ -12,6 +12,7 @@ import { supabase } from "../supabaseClient";
 import {
   createBacktestRequest,
   createStrategyDraft,
+  indicatorConditionCatalog,
   strategyConditionCatalog,
   strategyStatuses,
 } from "../services/strategyModels";
@@ -118,6 +119,19 @@ function StrategyLibrary({ strategies, onCreate, onSelect }) {
 function StrategyBuilder({ draft, setDraft, onSave, selectedStrategy }) {
   const update = (field, value) => setDraft((previous) => ({ ...previous, [field]: value }));
   const toggleCondition = (key) => setDraft((previous) => ({ ...previous, conditions: { ...previous.conditions, [key]: !previous.conditions[key] } }));
+  const updateIndicatorSetting = (conditionKey, parameterKey, value) => setDraft((previous) => ({
+    ...previous,
+    conditions: {
+      ...previous.conditions,
+      indicatorSettings: {
+        ...previous.conditions.indicatorSettings,
+        [conditionKey]: {
+          ...previous.conditions.indicatorSettings?.[conditionKey],
+          [parameterKey]: parameterKey === "priceRelation" || parameterKey === "crossover" ? value : Number(value),
+        },
+      },
+    },
+  }));
   return (
     <section className="strategy-lab-section strategy-builder-section">
       <div className="strategy-section-heading"><div><p className="eyebrow">STRATEGY BUILDER</p><h2>{selectedStrategy ? `Edit ${selectedStrategy.name}` : "Define a strategy"}</h2><p>Progressive disclosure keeps the development workflow readable.</p></div><span className="strategy-data-status">Session draft</span></div>
@@ -128,7 +142,11 @@ function StrategyBuilder({ draft, setDraft, onSave, selectedStrategy }) {
         </div>
         <div className="strategy-builder-column">
           <div className="strategy-builder-group"><span className="strategy-group-label">Risk management</span><label>Stop-loss rules<textarea value={draft.stopLossRules} onChange={(event) => update("stopLossRules", event.target.value)} placeholder="Where is the trade invalidated?" rows="3" /></label><label>Take-profit rules<textarea value={draft.takeProfitRules} onChange={(event) => update("takeProfitRules", event.target.value)} placeholder="How is the target selected?" rows="3" /></label><div className="strategy-two-fields"><label>Risk / reward<input value={draft.riskReward} onChange={(event) => update("riskReward", event.target.value)} placeholder="e.g. 2R" /></label><label>Direction<input value={draft.direction} onChange={(event) => update("direction", event.target.value)} placeholder="Long / Short / Both" /></label></div></div>
-          <div className="strategy-builder-group"><span className="strategy-group-label">Confirmation conditions</span><div className="strategy-condition-list">{strategyConditionCatalog.map((condition) => <label className={draft.conditions[condition.key] ? "selected" : ""} key={condition.key}><input type="checkbox" checked={draft.conditions[condition.key]} onChange={() => toggleCondition(condition.key)} /><span>{condition.label}</span><small>{draft.conditions[condition.key] ? "Required" : "Optional"}</small></label>)}</div></div>
+          <div className="strategy-builder-group"><span className="strategy-group-label">Confirmation conditions</span><div className="strategy-condition-list">{strategyConditionCatalog.map((condition) => {
+            const indicator = indicatorConditionCatalog.find(({ key }) => key === condition.key);
+            const enabled = Boolean(draft.conditions[condition.key]);
+              return <div className={`strategy-condition-item${enabled ? " selected" : ""}`} key={condition.key}><label><input type="checkbox" checked={enabled} onChange={() => toggleCondition(condition.key)} /><span>{condition.label}{indicator && <HelpTooltip id={`indicator-${condition.key}`} text={indicator.help} />}</span><small>{enabled ? "Required" : "Optional"}</small></label>{indicator && enabled && <div className="indicator-condition-settings"><p>{indicator.help}</p>{indicator.parameters.map((parameter) => <label key={parameter.key}>{parameter.label}{parameter.type === "select" ? <select value={draft.conditions.indicatorSettings?.[condition.key]?.[parameter.key] ?? parameter.defaultValue} onChange={(event) => updateIndicatorSetting(condition.key, parameter.key, event.target.value)}>{parameter.options.map((option) => <option key={option}>{option}</option>)}</select> : <input type="number" min={parameter.min} step={parameter.step || 1} value={draft.conditions.indicatorSettings?.[condition.key]?.[parameter.key] ?? parameter.defaultValue} onChange={(event) => updateIndicatorSetting(condition.key, parameter.key, event.target.value)} />}</label>)}</div>}</div>;
+          })}</div><small className="indicator-config-note">Indicator conditions are saved with this version; they do not affect backtest entries yet.</small></div>
           <div className="strategy-builder-group"><label>Notes<textarea value={draft.notes} onChange={(event) => update("notes", event.target.value)} placeholder="What would you want to review after a test?" rows="3" /></label></div>
         </div>
       </div>
@@ -266,7 +284,7 @@ function BacktestWorkspace({ strategies, request, setRequest }) {
         <label><FieldLabel helpId="start-date" helpText="Period of history to test. More history generally makes results more reliable.">Start date</FieldLabel><input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
         <label><FieldLabel helpId="end-date" helpText="Period of history to test. More history generally makes results more reliable.">End date</FieldLabel><input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>
         <label><FieldLabel helpId="session" helpText="Entry window in New York time: Asia 19–04, London 03–12, New York 08–17, Overlap 08–12.">Session</FieldLabel><select value={request.session || "All sessions"} onChange={(event) => update("session", event.target.value)}>{backtestSessions.map((session) => <option value={session} key={session}>{session}</option>)}</select></label>
-        <label><FieldLabel helpId="risk-per-trade" helpText="How much of your balance to risk per trade, e.g. 1 = 1%.">Risk per trade</FieldLabel><input value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder="e.g. 1%" /></label>
+        <label className="risk-per-trade-field"><FieldLabel helpId="risk-per-trade" helpText="Choose % of balance (1 = 1%) or a fixed dollar risk amount, which cannot exceed starting balance.">Risk per trade</FieldLabel><span className="risk-mode-toggle" role="group" aria-label="Risk per trade mode"><button type="button" aria-pressed={request.riskMode === "percent"} onClick={() => update("riskMode", "percent")}>%</button><button type="button" aria-pressed={request.riskMode === "dollars"} onClick={() => update("riskMode", "dollars")}>$</button></span><input type="number" min="0.01" max={request.riskMode === "dollars" ? Number(request.startingBalance) || undefined : 100} step="0.01" value={request.riskPerTrade} onChange={(event) => update("riskPerTrade", event.target.value)} placeholder={request.riskMode === "dollars" ? "Dollar amount" : "e.g. 1 for 1%"} /><small>{request.riskMode === "dollars" ? `Risk amount up to ${request.startingBalance || "starting balance"}` : "Percentage of starting balance"}</small></label>
         <label><FieldLabel helpId="starting-balance" helpText="Simulated account size in dollars.">Starting balance</FieldLabel><input value={request.startingBalance} onChange={(event) => update("startingBalance", event.target.value)} placeholder="e.g. 10000" /></label>
         <label><FieldLabel helpId="risk-reward" helpText="Take-profit distance as a multiple of your stop-loss, e.g. 2 means win twice what you risk.">Risk:Reward ratio</FieldLabel><input type="number" min="0.01" step="0.01" value={request.riskRewardRatio} onChange={(event) => update("riskRewardRatio", event.target.value)} /><small>→ {formatPercentage(calculateTakeProfitPercent(request.stopLossPct, request.riskRewardRatio))} take-profit</small></label>
       </div>

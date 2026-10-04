@@ -47,4 +47,24 @@ describe("strategy persistence adapters", () => {
       conditions: { mss: true },
     });
   });
+
+  it("round-trips configurable indicator settings in the existing conditions JSON", () => {
+    const conditions = {
+      rsiConfirmation: true,
+      indicatorSettings: {
+        rsiConfirmation: { period: 10, oversold: 25, overbought: 75 },
+        macdConfirmation: { fastPeriod: 8, slowPeriod: 21, signalPeriod: 5, crossover: "bearish" },
+      },
+    };
+    const databaseRow = strategyVersionToDb({ strategyId: "strategy-1", version: 3, conditions });
+    const version = dbToStrategyVersion({
+      id: "version-3",
+      strategy_id: "strategy-1",
+      version_number: 3,
+      conditions: databaseRow.conditions,
+    });
+
+    expect(databaseRow.conditions).toEqual(conditions);
+    expect(version.conditions).toEqual(conditions);
+  });
 });

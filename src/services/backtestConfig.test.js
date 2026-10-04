@@ -68,6 +68,22 @@ describe("buildBacktestConfig", () => {
     });
   });
 
+  it("interprets risk 5 in percent mode as 5 percent of the account", () => {
+    const config = buildBacktestConfig({ ...baseRequest, riskPerTrade: "5", riskMode: "percent" }, version);
+
+    expect(config.engine.riskPerTrade).toBe(0.05);
+    expect(config.engine.riskCapital).toBeUndefined();
+  });
+
+  it("passes fixed dollar risk as risk capital and rejects amounts over balance", () => {
+    const config = buildBacktestConfig({ ...baseRequest, riskPerTrade: "250", riskMode: "dollars" }, version);
+
+    expect(config.engine.riskCapital).toBe(250);
+    expect(config.engine.riskPerTrade).toBeUndefined();
+    expect(() => buildBacktestConfig({ ...baseRequest, riskPerTrade: "10001", riskMode: "dollars" }, version))
+      .toThrow("no more than starting balance");
+  });
+
   it.each([
     ["asset", "MSFT", "historicalRequest", "asset", "MSFT"],
     ["timeframe", "1h", "historicalRequest", "timeframe", "1h"],

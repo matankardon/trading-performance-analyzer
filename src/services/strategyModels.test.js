@@ -2,6 +2,7 @@ import {
   createBacktestRequest,
   createStrategyDraft,
   createStrategyVersion,
+  indicatorConditionCatalog,
   strategyConditionCatalog,
 } from "./strategyModels";
 
@@ -10,11 +11,10 @@ describe("strategy models", () => {
     const draft = createStrategyDraft();
 
     expect(draft.status).toBe("Draft");
-    expect(draft.conditions).toEqual(
-      Object.fromEntries(
-        strategyConditionCatalog.map(({ key }) => [key, false])
-      )
-    );
+    expect(Object.fromEntries(strategyConditionCatalog.map(({ key }) => [key, draft.conditions[key]])))
+      .toEqual(Object.fromEntries(strategyConditionCatalog.map(({ key }) => [key, false])));
+    expect(Object.keys(draft.conditions.indicatorSettings)).toEqual(indicatorConditionCatalog.map(({ key }) => key));
+    expect(draft.conditions.indicatorSettings.rsiConfirmation).toMatchObject({ period: 14, oversold: 30, overbought: 70 });
     expect(draft.name).toBe("");
   });
 
@@ -55,6 +55,7 @@ describe("strategy models", () => {
       endDate: "",
       session: "",
       riskPerTrade: "",
+      riskMode: "percent",
       startingBalance: "",
       stopLossPct: "2",
       riskRewardRatio: "2",
