@@ -526,6 +526,16 @@
   line-height: 1.5;
 }
 
+.backtest-size-cap-note {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--terminal-amber);
+  color: var(--terminal-amber);
+  background: rgba(214, 163, 74, 0.08);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
 .backtest-result-caption {
   margin-top: 16px;
   color: var(--ink-faint);

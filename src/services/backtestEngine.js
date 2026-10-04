@@ -84,6 +84,7 @@ function closePosition(position, price, timestamp, reason, exitIndex, commission
     stopLoss: position.stopLoss,
     takeProfit: position.takeProfit,
     positionSize: position.positionSize,
+    sizeCappedByEquity: Boolean(position.sizeCappedByEquity),
     pnl,
     grossPnl,
     commission: commissionPerTrade,
@@ -256,12 +257,20 @@ export function runBacktest({
       const stopLoss = isLong ? entryPrice * (1 - stopLossPct) : entryPrice * (1 + stopLossPct);
       const takeProfit = isLong ? entryPrice * (1 + takeProfitPct) : entryPrice * (1 - takeProfitPct);
       const stopDistance = Math.abs(entryPrice - stopLoss);
+      const rawPositionSize = riskCapital / stopDistance;
+      const currentEquity = balance;
+      const notionalValue = rawPositionSize * entryPrice;
+      const sizeCappedByEquity = currentEquity > 0 && notionalValue > currentEquity;
+      const cappedPositionSize = sizeCappedByEquity
+        ? currentEquity / entryPrice
+        : rawPositionSize;
       position = {
         direction: pendingDirection,
         entryPrice,
         stopLoss,
         takeProfit,
-        positionSize: riskCapital / stopDistance,
+        positionSize: cappedPositionSize,
+        sizeCappedByEquity,
         entryIndex: index,
         entryTimestamp: bar.timestamp,
       };
@@ -353,9 +362,12 @@ export function runBacktest({
     });
   }
 
+  const sizeCappedTradeCount = trades.filter((trade) => trade.sizeCappedByEquity).length;
+
   return {
     trades,
     equityCurve,
+    sizeCappedTradeCount,
     ...buildMetrics(trades, equityCurve, startingBalance, bars.length),
   };
 }

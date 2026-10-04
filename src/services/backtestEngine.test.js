@@ -116,6 +116,41 @@ describe("backtest engine", () => {
     expect(targetGap.trades[0]).toMatchObject({ exitPrice: 115, exitReason: "take_profit" });
   });
 
+  it("caps the trade size at current equity when the risk plan implies a larger notional", () => {
+    const result = runBacktest({
+      bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 101, 99, 100)],
+      entryRule: ({ index }) => index === 0,
+      stopLossPct: 0.1,
+      takeProfitPct: 0.2,
+      riskPerTrade: 0.5,
+      startingBalance: 1000,
+      direction: "long",
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].sizeCappedByEquity).toBe(true);
+    expect(result.trades[0].positionSize).toBeCloseTo(10, 6);
+    expect(result.trades[0].entryPrice).toBe(100);
+    expect(result.trades[0].positionSize * result.trades[0].entryPrice).toBeCloseTo(1000, 6);
+    expect(result.sizeCappedTradeCount).toBe(1);
+  });
+
+  it("keeps the original size when the notional is within current equity", () => {
+    const result = runBacktest({
+      bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 101, 99, 100)],
+      entryRule: ({ index }) => index === 0,
+      stopLossPct: 0.1,
+      takeProfitPct: 0.2,
+      riskPerTrade: 0.01,
+      startingBalance: 1000,
+      direction: "long",
+    });
+
+    expect(result.trades[0].sizeCappedByEquity).toBe(false);
+    expect(result.trades[0].positionSize).toBeCloseTo(1, 6);
+    expect(result.sizeCappedTradeCount).toBe(0);
+  });
+
   it("supports short trades and closes an open position at end of data", () => {
     const result = runBacktest({
       bars: [bar(1, 100, 100, 100, 100), bar(2, 100, 100, 90, 95)],
