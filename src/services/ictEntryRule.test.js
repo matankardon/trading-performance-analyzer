@@ -1,4 +1,5 @@
 import { ictEntryRule } from "./ictEntryRule";
+import { runBacktest } from "./backtestEngine";
 
 function bar(open, high, low, close, timestamp) {
   return { timestamp, open, high, low, close, volume: 100 };
@@ -46,6 +47,32 @@ describe("ICT composite entry rule", () => {
     const bars = confluenceBars();
 
     expect(longSignalIndices(bars)).toEqual([10]);
+  });
+
+  it("stores the exact entry gate evidence on the recorded trade", () => {
+    const bars = [...confluenceBars(), bar(12.5, 13, 12, 12.7, 11)];
+    const entryRule = ictEntryRule(bars, testOptions);
+    const result = runBacktest({
+      bars,
+      entryRule,
+      stopLossPct: 0.02,
+      takeProfitPct: 0.04,
+      riskPerTrade: 0.01,
+      startingBalance: 10000,
+      direction: "long",
+    });
+
+    expect(result.trades).toHaveLength(1);
+    expect(result.trades[0].entryReasoning).toMatchObject({
+      signalIndex: 10,
+      entryIndex: 11,
+      direction: "long",
+      gates: { liquiditySweep: true, mss: true, fvg: true, orderBlock: true, stochasticConfirmation: true },
+      liquiditySweep: { type: "low", index: 7 },
+      mss: { type: "bullish", index: 8, brokenLevel: 12 },
+      stochastic: { index: 11 },
+    });
+    expect(result.trades[0].entryReasoning.zones.length).toBeGreaterThan(0);
   });
 
   it("does not signal when no qualifying liquidity sweep precedes the MSS", () => {

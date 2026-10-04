@@ -41,16 +41,8 @@ function hasRequiredSweep(sweeps, event, direction, lookback) {
   ));
 }
 
-/**
- * Build a backtestEngine-compatible entry callback from one historical series.
- * Every enabled condition is required; FVG and order-block taps are alternative
- * zone confirmations, matching the ICT setup definition. Displacement is not
- * yet detected and is rejected if a strategy requires it.
- */
 export function ictEntryRule(bars, options = {}) {
-  if (!Array.isArray(bars)) {
-    throw new Error("bars must be an array.");
-  }
+  if (!Array.isArray(bars)) throw new Error("bars must be an array.");
 
   const conditions = getConditionOptions(options);
   if (conditions.requireDisplacement) {
@@ -68,13 +60,8 @@ export function ictEntryRule(bars, options = {}) {
   const stochasticDPeriod = options.stochasticDPeriod ?? 3;
   const session = options.session ?? "All sessions";
 
-  for (const [name, value] of [
-    ["sweepLookback", sweepLookback],
-    ["setupLookback", setupLookback],
-  ]) {
-    if (!Number.isInteger(value) || value < 1) {
-      throw new Error(`${name} must be a positive integer.`);
-    }
+  for (const [name, value] of [["sweepLookback", sweepLookback], ["setupLookback", setupLookback]]) {
+    if (!Number.isInteger(value) || value < 1) throw new Error(`${name} must be a positive integer.`);
   }
 
   const fvgEvents = detectFVGs(bars);
@@ -94,77 +81,133 @@ export function ictEntryRule(bars, options = {}) {
   }
 
   const requiresMssContext = conditions.requireMss || conditions.requireSweep || conditions.requireOrderBlock;
+  const matchingContexts = (type, index) => mssContexts.filter(({ event }) => (
+    event.type === type
+    && event.index <= index
+    && (event.confirmedAt ?? event.index) <= index
+    && index - event.index <= setupLookback
+  ));
 
-  const entryRule = ({ bars: currentBars, index, direction = "long" }) => {
-    if (currentBars !== bars || !Number.isInteger(index) || index < 0 || index >= bars.length) {
-      return false;
-    }
-
-    const directions = direction === "both" ? ["long", "short"] : [direction];
-    return directions.some((side) => {
-      const type = getDirectionType(side);
-      if (!type) return false;
-      if (!isTimestampInSession(bars[index].timestamp, session)) return false;
-      if (conditions.requireStoch && !isStochasticConfirming(stochastic[index], side)) return false;
-
-      const relevantContexts = mssContexts.filter(({ event }) => (
-        event.type === type
-        && event.index <= index
-        && (event.confirmedAt ?? event.index) <= index
-        && index - event.index <= setupLookback
-      ));
-      if (requiresMssContext && relevantContexts.length === 0) return false;
-
-      const contexts = relevantContexts.length ? relevantContexts : [null];
-      return contexts.some((context) => {
-        const event = context?.event;
-        if (conditions.requireMss && !event) return false;
-        if (conditions.requireSweep && (!event || !hasRequiredSweep(sweeps, event, type, sweepLookback))) {
-          return false;
-        }
-
-        if (!conditions.requireFvg && !conditions.requireOrderBlock) return true;
-        if (event && index <= event.index) return false;
-
-        const fvgTap = conditions.requireFvg && fvgEvents.some((gap) => (
+  const matchingZones = (type, index, event, context) => {
+    const zones = [];
+    if (conditions.requireFvg) {
+      fvgEvents.forEach((gap) => {
+        if (
           gap.type === type
           && index > (gap.confirmedAt ?? gap.index)
           && index - gap.index <= setupLookback
           && (!event || Math.abs(gap.index - event.index) <= setupLookback)
           && overlapsZone(bars[index], gap)
-        ));
-        const orderBlockTap = conditions.requireOrderBlock
-          && Boolean(context?.orderBlock)
-          && index > (context.orderBlock.confirmedAt ?? context.orderBlock.index)
-          && overlapsZone(bars[index], context.orderBlock);
+        ) {
+          zones.push({ kind: "FVG", index: gap.index, confirmedAt: gap.confirmedAt ?? gap.index, top: gap.top, bottom: gap.bottom });
+        }
+      });
+    }
+    if (
+      conditions.requireOrderBlock
+      && context?.orderBlock
+      && index > (context.orderBlock.confirmedAt ?? context.orderBlock.index)
+      && overlapsZone(bars[index], context.orderBlock)
+    ) {
+      const ob = context.orderBlock;
+      zones.push({ kind: "Order block", index: ob.index, confirmedAt: ob.confirmedAt ?? ob.index, top: ob.top, bottom: ob.bottom });
+    }
+    return zones;
+  };
 
-        return Boolean(fvgTap || orderBlockTap);
+  const entryRule = ({ bars: currentBars, index, direction = "long" }) => {
+    if (currentBars !== bars || !Number.isInteger(index) || index < 0 || index >= bars.length) return false;
+    const directions = direction === "both" ? ["long", "short"] : [direction];
+
+    return directions.some((side) => {
+      const type = getDirectionType(side);
+      if (!type || !isTimestampInSession(bars[index].timestamp, session)) return false;
+      if (conditions.requireStoch && !isStochasticConfirming(stochastic[index], side)) return false;
+
+      const contexts = matchingContexts(type, index);
+      if (requiresMssContext && contexts.length === 0) return false;
+      const candidates = contexts.length ? contexts : [null];
+      return candidates.some((context) => {
+        const event = context?.event;
+        const orderBlock = context?.orderBlock;
+        if (conditions.requireMss && !event) return false;
+        if (conditions.requireSweep && (!event || !hasRequiredSweep(sweeps, event, type, sweepLookback))) return false;
+        if (!conditions.requireFvg && !conditions.requireOrderBlock) return true;
+        if (event && index <= event.index) return false;
+        return matchingZones(type, index, event, { orderBlock }).length > 0;
       });
     });
+  };
+
+  entryRule.getEntryReasoning = (signalIndex, direction = "long", entryIndex = signalIndex + 1) => {
+    if (!entryRule({ bars, index: signalIndex, direction })) return null;
+    const type = getDirectionType(direction);
+    const sweptType = type === "bullish" ? "low" : "high";
+    const contexts = matchingContexts(type, signalIndex);
+    const candidates = contexts.length ? contexts : [null];
+
+    for (const context of candidates) {
+      const event = context?.event;
+      const sweep = conditions.requireSweep && event
+        ? [...sweeps].reverse().find((item) => (
+          item.type === sweptType
+          && item.index < event.index
+          && (item.confirmedAt ?? item.index) <= event.index
+          && event.index - item.index <= sweepLookback
+        ))
+        : null;
+      if (conditions.requireSweep && !sweep) continue;
+      const zones = matchingZones(type, signalIndex, event, context);
+      if ((conditions.requireFvg || conditions.requireOrderBlock) && !zones.length) continue;
+      const stochasticAtEntry = conditions.requireStoch ? stochastic[entryIndex] : null;
+
+      return {
+        signalIndex,
+        signalTimestamp: bars[signalIndex].timestamp,
+        entryIndex,
+        direction,
+        gates: {
+          liquiditySweep: conditions.requireSweep,
+          mss: conditions.requireMss,
+          fvg: conditions.requireFvg,
+          orderBlock: conditions.requireOrderBlock,
+          stochasticConfirmation: conditions.requireStoch,
+        },
+        liquiditySweep: sweep ? {
+          index: sweep.index,
+          timestamp: bars[sweep.index].timestamp,
+          type: sweep.type,
+          sweptLevel: sweep.sweptLevel,
+          confirmedAt: sweep.confirmedAt ?? sweep.index,
+        } : null,
+        mss: event ? {
+          index: event.index,
+          timestamp: bars[event.index].timestamp,
+          type: event.type,
+          brokenLevel: event.brokenLevel,
+          confirmedAt: event.confirmedAt ?? event.index,
+        } : null,
+        zones,
+        stochastic: stochasticAtEntry ? {
+          index: entryIndex,
+          timestamp: bars[entryIndex]?.timestamp,
+          k: stochasticAtEntry.k,
+          d: stochasticAtEntry.d,
+        } : null,
+      };
+    }
+    return null;
   };
 
   entryRule.getDiagnostics = (direction = "both") => {
     const directions = direction === "both" ? ["long", "short"] : [direction];
     const directionTypes = directions.map(getDirectionType).filter(Boolean);
-    const mssIndices = new Set(
-      mssEvents
-        .filter((event) => directionTypes.includes(event.type))
-        .map((event) => event.index),
-    );
+    const mssIndices = new Set(mssEvents.filter((event) => directionTypes.includes(event.type)).map((event) => event.index));
     const zoneRetestIndices = new Set();
     mssContexts.forEach(({ event, orderBlock }) => {
       if (!directionTypes.includes(event.type)) return;
       for (let index = event.index + 1; index < bars.length && index - event.index <= setupLookback; index += 1) {
-        const fvgTap = fvgEvents.some((gap) => (
-          gap.type === event.type
-          && index > (gap.confirmedAt ?? gap.index)
-          && Math.abs(gap.index - event.index) <= setupLookback
-          && overlapsZone(bars[index], gap)
-        ));
-        const orderBlockTap = Boolean(orderBlock)
-          && index > (orderBlock.confirmedAt ?? orderBlock.index)
-          && overlapsZone(bars[index], orderBlock);
-        if (fvgTap || orderBlockTap) zoneRetestIndices.add(index);
+        if (matchingZones(event.type, index, event, { orderBlock }).length) zoneRetestIndices.add(index);
       }
     });
     const stochasticIndices = new Set();
@@ -173,9 +216,7 @@ export function ictEntryRule(bars, options = {}) {
     });
     const allGatesIndices = new Set();
     bars.forEach((_, index) => {
-      if (directions.some((side) => entryRule({ bars, index, direction: side }))) {
-        allGatesIndices.add(index);
-      }
+      if (directions.some((side) => entryRule({ bars, index, direction: side }))) allGatesIndices.add(index);
     });
     const stages = [
       ["bars", bars.length],

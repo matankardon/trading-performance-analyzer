@@ -681,6 +681,101 @@
   font-family: var(--font-mono);
 }
 
+.backtest-trade-row.trade-outcome-win td:first-child {
+  border-left: 2px solid var(--terminal-green);
+}
+
+.backtest-trade-row.trade-outcome-loss td:first-child {
+  border-left: 2px solid var(--terminal-red);
+}
+
+.backtest-trade-row.trade-outcome-flat td:first-child {
+  border-left: 2px solid var(--line);
+}
+
+.trade-pnl-win { color: var(--terminal-green); }
+.trade-pnl-loss { color: var(--terminal-red); }
+.trade-pnl-flat { color: var(--ink-faint); }
+
+.trade-chart-panel {
+  border-left: 2px solid var(--line);
+  padding: 12px;
+}
+
+.trade-chart-panel.outcome-win { border-left-color: var(--terminal-green); }
+.trade-chart-panel.outcome-loss { border-left-color: var(--terminal-red); }
+.trade-chart-panel.outcome-flat { border-left-color: var(--line); }
+
+.trade-chart-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid var(--line-soft);
+  padding-bottom: 8px;
+}
+
+.outcome-win .trade-chart-heading { border-bottom-color: var(--terminal-green); }
+.outcome-loss .trade-chart-heading { border-bottom-color: var(--terminal-red); }
+
+.trade-chart-heading h4,
+.trade-chart-controls-hint,
+.trade-chart-reasoning,
+.trade-chart-reasoning-unavailable,
+.trade-chart-close {
+  font-family: var(--font-mono);
+}
+
+.trade-chart-heading h4 {
+  margin-top: 3px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.trade-chart-controls-hint,
+.trade-chart-reasoning,
+.trade-chart-reasoning-unavailable {
+  color: var(--ink-faint);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.trade-chart-controls-hint { margin: 7px 0; }
+.trade-chart-reasoning { margin-top: 8px; color: var(--ink-soft); }
+
+.trade-chart-close {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 5px 8px;
+  color: var(--ink-soft);
+  background: rgba(13, 23, 36, 0.72);
+  font-size: 10px;
+}
+
+.trade-chart-canvas {
+  position: relative;
+  width: 100%;
+  height: 340px;
+  overflow: hidden;
+}
+
+.trade-chart-annotations {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+  font-family: var(--font-mono);
+}
+
+.trade-chart-canvas table,
+.trade-chart-canvas button {
+  font-family: var(--font-mono);
+}
+
 .backtest-trade-row {
   animation: terminal-enter 200ms ease both;
 }

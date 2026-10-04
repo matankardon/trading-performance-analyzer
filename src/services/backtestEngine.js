@@ -95,6 +95,7 @@ function closePosition(position, price, timestamp, reason, exitIndex, commission
     exitTimestamp: timestamp,
     calendarTimeHeldMs,
     calendarTimeHeld: formatDuration(calendarTimeHeldMs),
+    entryReasoning: position.entryReasoning || null,
     exitReason: reason,
   };
 }
@@ -248,6 +249,7 @@ export function runBacktest({
   let balance = startingBalance;
   let position = null;
   let pendingDirection = null;
+  let pendingEntryReasoning = null;
   let rawSignalCount = 0;
   let queuedSignalCount = 0;
   let skippedWhilePositionOpen = 0;
@@ -276,6 +278,7 @@ export function runBacktest({
         takeProfit,
         positionSize: cappedPositionSize,
         sizeCappedByEquity,
+        entryReasoning: pendingEntryReasoning,
         entryIndex: index,
         entryTimestamp: bar.timestamp,
       };
@@ -315,6 +318,9 @@ export function runBacktest({
         }
       } else if (signalDirections.length > 0 && canEnterOnNextBar) {
         pendingDirection = signalDirections[0];
+        pendingEntryReasoning = typeof entryRule.getEntryReasoning === "function"
+          ? entryRule.getEntryReasoning(index, pendingDirection, index + 1)
+          : null;
         if (debugSignals) {
           queuedSignalCount += 1;
           signalDirections.forEach((signalDirection, signalIndex) => {
