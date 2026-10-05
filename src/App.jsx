@@ -2070,36 +2070,32 @@ function App() {
                   </h3>
 
                   <span>
-                    Mark the conditions
-                    that were actually
-                    present.
+                    Mark the conditions and indicators that were actually present.
                   </span>
                 </div>
 
-                <div className="checklist-grid">
-                  {SETUP_CONDITIONS.map(
-                    ({ key: name, label }) => (
-                      <label
-                        className="check-item"
-                        key={name}
-                      >
-                        <input
-                          type="checkbox"
-                          name={name}
-                          checked={Boolean(
-                            form[name]
-                          )}
-                          onChange={
-                            handleCheckboxChange
-                          }
-                        />
-
-                        <span>
-                          {label}
-                        </span>
+                <div className="checklist-group">
+                  <h4 className="checklist-group-label">Conditions</h4>
+                  <div className="checklist-grid">
+                    {SETUP_CONDITIONS.map(({ key: name, label }) => (
+                      <label className="trade-choice-chip" key={name}>
+                        <input type="checkbox" name={name} checked={Boolean(form[name])} onChange={handleCheckboxChange} />
+                        <span>{label}</span>
                       </label>
-                    )
-                  )}
+                    ))}
+                  </div>
+                </div>
+
+                <div className="checklist-group checklist-indicators-group">
+                  <h4 className="checklist-group-label">Indicators</h4>
+                  <div className="checklist-grid">
+                    {INDICATORS.map(({ name }) => (
+                      <label className="trade-choice-chip" key={name}>
+                        <input type="checkbox" checked={form.indicators.includes(name)} onChange={() => handleIndicatorToggle(name)} />
+                        <span>{name}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
 
@@ -2122,7 +2118,7 @@ function App() {
                   ].map(
                     (quality) => (
                       <label
-                        className="quality-option"
+                        className="trade-choice-chip"
                         key={quality}
                       >
                         <input
@@ -2148,7 +2144,7 @@ function App() {
                   )}
                 </div>
 
-                <label className="rule-break-check">
+                <label className="trade-choice-chip rule-break-check">
                   <input
                     type="checkbox"
                     name="ruleBreak"
@@ -2184,18 +2180,6 @@ function App() {
                   }
                   rows="4"
                 />
-              </div>
-
-              <div className="checklist-section">
-                <div className="section-title"><p className="eyebrow">INDICATORS</p><h3>Indicators Used</h3><span>Select only indicators used to review this trade.</span></div>
-                <div className="checklist-grid">
-                  {INDICATORS.map(({ name }) => (
-                    <label className="check-item" key={name}>
-                      <input type="checkbox" checked={form.indicators.includes(name)} onChange={() => handleIndicatorToggle(name)} />
-                      <span>{name}</span>
-                    </label>
-                  ))}
-                </div>
               </div>
 
               <div className="checklist-section trade-metrics-section">

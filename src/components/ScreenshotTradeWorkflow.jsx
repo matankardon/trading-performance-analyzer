@@ -293,8 +293,19 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
                   <label className="extraction-field"><span>Strategy Version<em>OPTIONAL</em></span><select value={strategyVersionId} onChange={(event) => setStrategyVersionId(event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{(selectedStrategy?.versions || []).map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label>
                 </div>
                 {selectedVersion && <p className="forward-test-link-note">Counts toward Forward Test of {selectedStrategy.name} v{selectedVersion.version} ({forwardTradeCount} trades so far)</p>}
-                <div className="detected-conditions"><p className="eyebrow">DETECTED SETUP CONDITIONS</p>{SETUP_CONDITIONS.map(({ key, label }) => <label key={key}><span>{label}</span><select name={label} value={conditionStates[label]} onChange={handleConditionChange}><option>NOT DETECTED</option><option>CONFIDENT</option><option>LIKELY</option><option>UNCERTAIN</option></select></label>)}</div>
-                <div className="detected-conditions indicator-chip-section"><p className="eyebrow">INDICATORS USED</p><div className="checklist-grid">{INDICATORS.map(({ name }) => <label className="check-item" key={name}><input type="checkbox" checked={indicators.includes(name)} onChange={() => handleIndicatorToggle(name)} /><span>{name}</span></label>)}</div></div>
+                <section className="checklist-section screenshot-checklist-section">
+                  <div className="section-title"><p className="eyebrow">MARKET CONTEXT</p><h3>Setup Checklist</h3><span>Mark the conditions and indicators that were actually present.</span></div>
+                  <div className="checklist-group">
+                    <h4 className="checklist-group-label">Conditions</h4>
+                    <div className="detected-conditions">
+                      {SETUP_CONDITIONS.map(({ key, label }) => <label key={key}><span>{label}</span><select name={label} value={conditionStates[label]} onChange={handleConditionChange}><option>NOT DETECTED</option><option>CONFIDENT</option><option>LIKELY</option><option>UNCERTAIN</option></select></label>)}
+                    </div>
+                  </div>
+                  <div className="checklist-group checklist-indicators-group">
+                    <h4 className="checklist-group-label">Indicators</h4>
+                    <div className="checklist-grid">{INDICATORS.map(({ name }) => <label className="trade-choice-chip" key={name}><input type="checkbox" checked={indicators.includes(name)} onChange={() => handleIndicatorToggle(name)} /><span>{name}</span></label>)}</div>
+                  </div>
+                </section>
                 <label className="form-field screenshot-notes"><span>Notes / context</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Add context after reviewing the screenshot" rows="3" /></label>
               </div>
             </div>
