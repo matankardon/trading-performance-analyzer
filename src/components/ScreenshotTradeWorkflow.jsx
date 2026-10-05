@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
+import { INDICATORS, SETUP_CONDITIONS } from "../constants/strategyOptions";
 
 const extractionFields = [
   ["asset", "Asset"],
@@ -26,15 +27,6 @@ const numericExtractionFields = new Set([
   "riskReward",
   "pnl",
 ]);
-
-const conditionFields = [
-  "Liquidity Sweep",
-  "MSS",
-  "FVG",
-  "Displacement",
-  "Order Block",
-  "Stochastic Confirmation",
-];
 
 const emptyExtraction = extractionFields.reduce(
   (fields, [key]) => ({ ...fields, [key]: "" }),
@@ -64,15 +56,17 @@ function getAnnotation(value) {
   return match ? String(value).trim().slice(match[0].length).trim() : "";
 }
 
-function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onConsent }) {
+function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onConsent, strategies = [], trades = [] }) {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [stage, setStage] = useState("upload");
   const [extraction, setExtraction] = useState(emptyExtraction);
   const [rawExtraction, setRawExtraction] = useState(null);
   const [conditionStates, setConditionStates] = useState(
-    conditionFields.reduce((states, condition) => ({ ...states, [condition]: "NOT DETECTED" }), {})
+    SETUP_CONDITIONS.reduce((states, { label }) => ({ ...states, [label]: "NOT DETECTED" }), {})
   );
+  const [indicators, setIndicators] = useState([]);
+  const [strategyVersionId, setStrategyVersionId] = useState("");
   const [notes, setNotes] = useState("");
   const [analysisError, setAnalysisError] = useState("");
   const [aiAnalyzed, setAiAnalyzed] = useState(false);
@@ -100,6 +94,7 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
 
     const extractionAtStart = extraction;
     const conditionStatesAtStart = conditionStates;
+    const indicatorsAtStart = indicators;
     setAnalysisError("");
     setAiAnalyzed(false);
     setRawExtraction(null);
@@ -133,17 +128,23 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
         throw new Error("AI analysis returned an incomplete result.");
       }
 
-      setRawExtraction({ ...data.extraction });
+      const matchingStrategy = strategies.find((strategy) => strategy.name === data.extraction.strategy);
+      const extractedIndicators = INDICATORS
+        .filter(({ name }) => Array.isArray(data.indicators) && data.indicators.includes(name))
+        .map(({ name }) => name);
+      setRawExtraction({ ...data.extraction, indicators: extractedIndicators });
       setExtraction((previous) => (
         JSON.stringify(previous) === JSON.stringify(extractionAtStart)
-          ? { ...emptyExtraction, ...data.extraction }
+          ? { ...emptyExtraction, ...data.extraction, strategy: matchingStrategy?.name || "" }
           : previous
       ));
       setConditionStates((previous) => (
         JSON.stringify(previous) === JSON.stringify(conditionStatesAtStart)
-          ? { ...conditionFields.reduce((states, condition) => ({ ...states, [condition]: "NOT DETECTED" }), {}), ...data.conditionStates }
+          ? { ...SETUP_CONDITIONS.reduce((states, { label }) => ({ ...states, [label]: "NOT DETECTED" }), {}), ...data.conditionStates }
           : previous
       ));
+      setIndicators((previous) => JSON.stringify(previous) === JSON.stringify(indicatorsAtStart) ? extractedIndicators : previous);
+      setStrategyVersionId("");
       setAiAnalyzed(true);
     } catch (error) {
       setAnalysisError(error instanceof Error ? error.message : "AI analysis could not be completed.");
@@ -152,9 +153,11 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
       ));
       setConditionStates((previous) => (
         JSON.stringify(previous) === JSON.stringify(conditionStatesAtStart)
-          ? conditionFields.reduce((states, condition) => ({ ...states, [condition]: "NOT DETECTED" }), {})
+          ? SETUP_CONDITIONS.reduce((states, { label }) => ({ ...states, [label]: "NOT DETECTED" }), {})
           : previous
       ));
+      setIndicators((previous) => JSON.stringify(previous) === JSON.stringify(indicatorsAtStart) ? [] : previous);
+      setStrategyVersionId("");
     } finally {
       setStage("review");
     }
@@ -170,6 +173,17 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
     setConditionStates((previous) => ({ ...previous, [name]: value }));
   }
 
+  function handleStrategyChange(event) {
+    setExtraction((previous) => ({ ...previous, strategy: event.target.value }));
+    setStrategyVersionId("");
+  }
+
+  function handleIndicatorToggle(indicator) {
+    setIndicators((previous) => previous.includes(indicator)
+      ? previous.filter((item) => item !== indicator)
+      : [...previous, indicator]);
+  }
+
   function handleBack() {
     if (stage === "review") {
       setStage("ready");
@@ -179,8 +193,14 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
   }
 
   function handleConfirm() {
-    onConfirm({ extraction, notes, conditionStates, file, aiExtraction: rawExtraction });
+    onConfirm({ extraction, notes, conditionStates, file, aiExtraction: rawExtraction, indicators, strategyVersionId });
   }
+
+  const selectedStrategy = strategies.find((strategy) => strategy.name === extraction.strategy);
+  const selectedVersion = selectedStrategy?.versions.find((version) => version.id === strategyVersionId);
+  const forwardTradeCount = selectedVersion
+    ? trades.filter((trade) => trade.strategyVersionId === selectedVersion.id).length
+    : 0;
 
   async function handleConsentContinue() {
     const shouldContinue = await onConsent?.(dontShowConsentAgain);
@@ -263,11 +283,18 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
                 <div className="review-heading"><div><p className="eyebrow">TRADE DETECTED</p><h3>Review before saving</h3></div><span className="confidence-badge confidence-not-detected">{aiAnalyzed ? "AI EXTRACTED" : "NOT DETECTED"}</span></div>
                 <p className="review-disclaimer">{analysisError || (aiAnalyzed ? "AI-extracted data is a draft — verify every field before saving." : "Enter or correct values manually before continuing.")}</p>
                 <div className="extraction-grid">{extractionFields.map(([key, label]) => {
+                  if (key === "strategy") {
+                    return <label className="extraction-field" key={key}><span>{label}<em>NOT DETECTED</em></span><select name={key} value={extraction.strategy} onChange={handleStrategyChange}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.name} key={strategy.id}>{strategy.name}</option>)}</select></label>;
+                  }
                   const isNumeric = numericExtractionFields.has(key);
                   const annotation = isNumeric ? getAnnotation(extraction[key]) : "";
                   return <label className="extraction-field" key={key}><span>{label}<em>NOT DETECTED</em></span><input name={key} type={isNumeric ? "number" : "text"} step={isNumeric ? "any" : undefined} value={isNumeric ? extractNumericValue(extraction[key]) : extraction[key]} onChange={handleFieldChange} placeholder="Not detected" />{annotation && <small className="field-ai-hint">{annotation}</small>}</label>;
-                })}</div>
-                <div className="detected-conditions"><p className="eyebrow">DETECTED SETUP CONDITIONS</p>{conditionFields.map((condition) => <label key={condition}><span>{condition}</span><select name={condition} value={conditionStates[condition]} onChange={handleConditionChange}><option>NOT DETECTED</option><option>CONFIDENT</option><option>LIKELY</option><option>UNCERTAIN</option></select></label>)}</div>
+                })}
+                  <label className="extraction-field"><span>Strategy Version<em>OPTIONAL</em></span><select value={strategyVersionId} onChange={(event) => setStrategyVersionId(event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{(selectedStrategy?.versions || []).map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label>
+                </div>
+                {selectedVersion && <p className="forward-test-link-note">Counts toward Forward Test of {selectedStrategy.name} v{selectedVersion.version} ({forwardTradeCount} trades so far)</p>}
+                <div className="detected-conditions"><p className="eyebrow">DETECTED SETUP CONDITIONS</p>{SETUP_CONDITIONS.map(({ key, label }) => <label key={key}><span>{label}</span><select name={label} value={conditionStates[label]} onChange={handleConditionChange}><option>NOT DETECTED</option><option>CONFIDENT</option><option>LIKELY</option><option>UNCERTAIN</option></select></label>)}</div>
+                <div className="detected-conditions indicator-chip-section"><p className="eyebrow">INDICATORS USED</p><div className="checklist-grid">{INDICATORS.map(({ name }) => <label className="check-item" key={name}><input type="checkbox" checked={indicators.includes(name)} onChange={() => handleIndicatorToggle(name)} /><span>{name}</span></label>)}</div></div>
                 <label className="form-field screenshot-notes"><span>Notes / context</span><textarea value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="Add context after reviewing the screenshot" rows="3" /></label>
               </div>
             </div>

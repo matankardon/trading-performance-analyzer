@@ -45,9 +45,7 @@ describe("TradeChart", () => {
       close: 100 + index + 1,
     }));
 
-    let rendered;
-    expect(() => {
-      rendered = render(
+    expect(() => render(
         <TradeChart
         bars={bars}
         trade={{
@@ -70,8 +68,7 @@ describe("TradeChart", () => {
         asset="AAPL"
         onClose={() => {}}
         />,
-      );
-    }).not.toThrow();
+    )).not.toThrow();
 
     expect(screen.getByText("TRADE ON CHART")).toBeInTheDocument();
     expect(chartApi.addSeries).toHaveBeenCalledWith(

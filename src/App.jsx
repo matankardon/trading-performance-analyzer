@@ -6,6 +6,8 @@ import TickerBar from "./components/TickerBar";
 import TradeEntryChoiceModal from "./components/TradeEntryChoiceModal";
 import logoMark from "./assets/logo.svg";
 import { dbToTrade, emptyTrade, tradeToDb } from "./models/trade";
+import { INDICATORS, SETUP_CONDITIONS } from "./constants/strategyOptions";
+import { fetchStrategyLibrary } from "./services/strategyLibrary";
 
 const Analytics = lazy(() => import("./components/Analytics"));
 const EconomicCalendar = lazy(() => import("./components/EconomicCalendar"));
@@ -153,6 +155,7 @@ function App() {
 
           if (mounted) {
             setCurrentUser(null);
+            setStrategyLibrary([]);
             setTrades([]);
             setLoadingTrades(false);
           }
@@ -167,6 +170,7 @@ function App() {
           return;
         }
 
+        if (!user) setStrategyLibrary([]);
         setCurrentUser(user);
 
         if (user) {
@@ -183,6 +187,7 @@ function App() {
 
         if (mounted) {
           setCurrentUser(null);
+          setStrategyLibrary([]);
           setTrades([]);
           setLoadingTrades(false);
         }
@@ -202,6 +207,7 @@ function App() {
         const user =
           session?.user || null;
 
+        if (!user) setStrategyLibrary([]);
         setCurrentUser(user);
 
         if (!user) {
@@ -220,6 +226,22 @@ function App() {
       authListener?.subscription?.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!currentUser) return undefined;
+
+    fetchStrategyLibrary(currentUser.id)
+      .then((strategies) => {
+        if (active) setStrategyLibrary(strategies);
+      })
+      .catch((error) => {
+        console.error("Could not load strategy library:", error);
+      });
+
+    return () => { active = false; };
+  }, [currentUser]);
 
   useEffect(() => {
     let cancelled = false;
@@ -257,6 +279,7 @@ function App() {
   */
 
   async function handleAuthSuccess(user) {
+    if (currentUser?.id !== user.id) setStrategyLibrary([]);
     setCurrentUser(user);
     setActivePage("Overview");
 
@@ -288,6 +311,7 @@ function App() {
     }
 
     setCurrentUser(null);
+    setStrategyLibrary([]);
     setTrades([]);
     setSelectedTrade(null);
     setShowTradeForm(false);
@@ -320,6 +344,60 @@ function App() {
     setForm((previous) => ({
       ...previous,
       [name]: checked,
+    }));
+  }
+
+  function handleStrategyChange(e) {
+    setForm((previous) => ({
+      ...previous,
+      strategy: e.target.value,
+      strategyVersionId: null,
+    }));
+  }
+
+  function handleIndicatorToggle(indicator) {
+    setForm((previous) => ({
+      ...previous,
+      indicators: previous.indicators.includes(indicator)
+        ? previous.indicators.filter((item) => item !== indicator)
+        : [...previous.indicators, indicator],
+    }));
+  }
+
+  function handleMetricChange(e) {
+    const { name, value } = e.target;
+    setForm((previous) => ({
+      ...previous,
+      metrics: { ...previous.metrics, [name]: value },
+    }));
+  }
+
+  function handleCustomMetricChange(index, field, value) {
+    setForm((previous) => ({
+      ...previous,
+      metrics: {
+        ...previous.metrics,
+        custom: previous.metrics.custom.map((metric, metricIndex) => (
+          metricIndex === index ? { ...metric, [field]: value } : metric
+        )),
+      },
+    }));
+  }
+
+  function addCustomMetric() {
+    setForm((previous) => ({
+      ...previous,
+      metrics: { ...previous.metrics, custom: [...previous.metrics.custom, { name: "", value: "" }] },
+    }));
+  }
+
+  function removeCustomMetric(index) {
+    setForm((previous) => ({
+      ...previous,
+      metrics: {
+        ...previous.metrics,
+        custom: previous.metrics.custom.filter((_, metricIndex) => metricIndex !== index),
+      },
     }));
   }
 
@@ -395,7 +473,7 @@ function App() {
     return true;
   }
 
-  function confirmScreenshotExtraction({ extraction, notes, conditionStates, file, aiExtraction }) {
+  function confirmScreenshotExtraction({ extraction, notes, conditionStates, file, aiExtraction, indicators, strategyVersionId }) {
     const numericFields = ["entry", "exit", "stopLoss", "takeProfit", "positionSize", "riskReward", "pnl"];
     const annotations = numericFields.reduce((fields, field) => ({
       ...fields,
@@ -415,19 +493,17 @@ function App() {
       stopLoss: extractNumericValue(extraction.stopLoss),
       takeProfit: extractNumericValue(extraction.takeProfit),
       pnl: extractNumericValue(extraction.pnl),
-      strategyVersionId: null,
+      strategyVersionId: strategyVersionId || null,
       positionSize: extractNumericValue(extraction.positionSize),
       riskReward: extractNumericValue(extraction.riskReward),
       time: extraction.time || "",
       timeframe: extraction.timeframe || "",
       strategy: extraction.strategy || "",
+      indicators: Array.isArray(indicators) ? indicators : [],
+      metrics: { drawdownUsd: "", drawdownPct: "", custom: [] },
       notes: notes || "",
       liquiditySweep: conditionStates?.["Liquidity Sweep"] === "CONFIDENT",
-      mss: conditionStates?.MSS === "CONFIDENT",
-      fvg: conditionStates?.FVG === "CONFIDENT",
-      displacement: conditionStates?.Displacement === "CONFIDENT",
-      orderBlock: conditionStates?.["Order Block"] === "CONFIDENT",
-      stochasticConfirmation: conditionStates?.["Stochastic Confirmation"] === "CONFIDENT",
+      ...Object.fromEntries(SETUP_CONDITIONS.map(({ key, label }) => [key, conditionStates?.[label] === "CONFIDENT"])),
     };
     setEditingTrade(null);
     setScreenshotFile(file || null);
@@ -487,31 +563,24 @@ function App() {
       strategy:
         trade.strategy || "",
 
+      indicators:
+        Array.isArray(trade.indicators) ? [...trade.indicators] : [],
+
+      metrics: {
+        drawdownUsd: trade.metrics?.drawdownUsd ?? "",
+        drawdownPct: trade.metrics?.drawdownPct ?? "",
+        custom: Array.isArray(trade.metrics?.custom)
+          ? trade.metrics.custom.map((metric) => ({ name: metric.name ?? "", value: metric.value ?? "" }))
+          : [],
+      },
+
       session:
         trade.session || "New York",
 
       notes:
         trade.notes || "",
 
-      liquiditySweep:
-        Boolean(trade.liquiditySweep),
-
-      mss:
-        Boolean(trade.mss),
-
-      fvg:
-        Boolean(trade.fvg),
-
-      displacement:
-        Boolean(
-          trade.displacement
-        ),
-
-      orderBlock:
-        Boolean(trade.orderBlock),
-
-      stochasticConfirmation:
-        Boolean(trade.stochasticConfirmation),
+      ...Object.fromEntries(SETUP_CONDITIONS.map(({ key }) => [key, Boolean(trade[key])])),
 
       tradeQuality:
         trade.tradeQuality ||
@@ -1427,32 +1496,7 @@ function App() {
         selectedTrade.pnl || 0
       );
 
-    const checklist = [
-      [
-        "Liquidity Sweep",
-        selectedTrade.liquiditySweep,
-      ],
-      [
-        "MSS",
-        selectedTrade.mss,
-      ],
-      [
-        "FVG",
-        selectedTrade.fvg,
-      ],
-      [
-        "Strong Displacement",
-        selectedTrade.displacement,
-      ],
-      [
-        "Order Block",
-        selectedTrade.orderBlock,
-      ],
-      [
-        "Stochastic Confirmation",
-        selectedTrade.stochasticConfirmation,
-      ],
-    ];
+    const checklist = SETUP_CONDITIONS.map(({ key, label }) => [label, selectedTrade[key]]);
 
     return (
       <div
@@ -1639,6 +1683,28 @@ function App() {
             </div>
           </div>
 
+          <div className="detail-section">
+            <p className="eyebrow">INDICATORS USED</p>
+            <div className="detail-checklist">
+              {(selectedTrade.indicators || []).length
+                ? selectedTrade.indicators.map((indicator) => (
+                  <div key={indicator} className="detail-check active"><span>✓</span><strong>{indicator}</strong></div>
+                ))
+                : <p className="trade-notes">No indicators recorded.</p>}
+            </div>
+          </div>
+
+          <div className="detail-section">
+            <p className="eyebrow">TRADE METRICS</p>
+            <div className="trade-detail-grid">
+              <div><span>Max Drawdown ($)</span><strong>{selectedTrade.metrics?.drawdownUsd ?? "-"}</strong></div>
+              <div><span>Max Drawdown (%)</span><strong>{selectedTrade.metrics?.drawdownPct ?? "-"}</strong></div>
+              {(selectedTrade.metrics?.custom || []).map((metric, index) => (
+                <div key={`${metric.name}-${index}`}><span>{metric.name || "Custom metric"}</span><strong>{metric.value ?? "-"}</strong></div>
+              ))}
+            </div>
+          </div>
+
           {selectedTrade.screenshotPath && (
             <div className="detail-section">
               <p className="eyebrow">SCREENSHOT</p>
@@ -1706,6 +1772,13 @@ function App() {
     if (!showTradeForm) {
       return null;
     }
+
+    const selectedVersion = strategyLibrary
+      .flatMap((strategy) => strategy.versions.map((version) => ({ ...version, strategyName: strategy.name })))
+      .find((version) => version.id === form.strategyVersionId);
+    const forwardTradeCount = selectedVersion
+      ? trades.filter((trade) => trade.strategyVersionId === selectedVersion.id).length
+      : 0;
 
     return (
       <div
@@ -1957,12 +2030,8 @@ function App() {
                 <select
                   id="strategy"
                   name="strategy"
-                  value={
-                    form.strategy
-                  }
-                  onChange={
-                    handleChange
-                  }
+                  value={form.strategy}
+                  onChange={handleStrategyChange}
                 >
                   <option value="">
                     Select strategy
@@ -1971,6 +2040,7 @@ function App() {
                     <option value={strategy.name} key={strategy.id}>{strategy.name}</option>
                   ))}
                 </select>
+                {selectedVersion && <p className="forward-test-link-note">Counts toward Forward Test of {selectedVersion.strategyName} v{selectedVersion.version} ({forwardTradeCount} trades so far)</p>}
               </div>
 
               <div className="form-field">
@@ -2007,33 +2077,8 @@ function App() {
                 </div>
 
                 <div className="checklist-grid">
-                  {[
-                    [
-                      "liquiditySweep",
-                      "Liquidity Sweep",
-                    ],
-                    [
-                      "mss",
-                      "MSS",
-                    ],
-                    [
-                      "fvg",
-                      "FVG",
-                    ],
-                    [
-                      "displacement",
-                      "Strong Displacement",
-                    ],
-                    [
-                      "orderBlock",
-                      "Order Block",
-                    ],
-                    [
-                      "stochasticConfirmation",
-                      "Stochastic Confirmation",
-                    ],
-                  ].map(
-                    ([name, label]) => (
+                  {SETUP_CONDITIONS.map(
+                    ({ key: name, label }) => (
                       <label
                         className="check-item"
                         key={name}
@@ -2139,6 +2184,36 @@ function App() {
                   }
                   rows="4"
                 />
+              </div>
+
+              <div className="checklist-section">
+                <div className="section-title"><p className="eyebrow">INDICATORS</p><h3>Indicators Used</h3><span>Select only indicators used to review this trade.</span></div>
+                <div className="checklist-grid">
+                  {INDICATORS.map(({ name }) => (
+                    <label className="check-item" key={name}>
+                      <input type="checkbox" checked={form.indicators.includes(name)} onChange={() => handleIndicatorToggle(name)} />
+                      <span>{name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="checklist-section trade-metrics-section">
+                <div className="section-title"><p className="eyebrow">TRADE METRICS</p><h3>Trade Metrics</h3><span>Optional measurements for this trade.</span></div>
+                <div className="trade-metric-fields">
+                  <div className="form-field"><label htmlFor="drawdownUsd">Max Drawdown ($)</label><input id="drawdownUsd" name="drawdownUsd" type="number" step="any" value={form.metrics.drawdownUsd} onChange={handleMetricChange} /></div>
+                  <div className="form-field"><label htmlFor="drawdownPct">Max Drawdown (%)</label><input id="drawdownPct" name="drawdownPct" type="number" step="any" value={form.metrics.drawdownPct} onChange={handleMetricChange} /></div>
+                </div>
+                <div className="custom-trade-metrics">
+                  {form.metrics.custom.map((metric, index) => (
+                    <div className="custom-trade-metric-row" key={`custom-metric-${index}`}>
+                      <div className="form-field"><label htmlFor={`customMetricName-${index}`}>Custom metric name</label><input id={`customMetricName-${index}`} value={metric.name} onChange={(event) => handleCustomMetricChange(index, "name", event.target.value)} /></div>
+                      <div className="form-field"><label htmlFor={`customMetricValue-${index}`}>Value</label><input id={`customMetricValue-${index}`} type="number" step="any" value={metric.value} onChange={(event) => handleCustomMetricChange(index, "value", event.target.value)} /></div>
+                      <button type="button" className="remove-custom-metric" aria-label={`Remove custom metric ${index + 1}`} onClick={() => removeCustomMetric(index)}>Remove</button>
+                    </div>
+                  ))}
+                  <button type="button" className="add-custom-metric" onClick={addCustomMetric}>Add custom metric</button>
+                </div>
               </div>
             </div>
 
@@ -2391,7 +2466,7 @@ function App() {
           )}
 
           {isDayTrading && activePage === "Strategy Lab" && (
-            <StrategyLab initialView="library" userId={currentUser?.id} onStrategiesChange={setStrategyLibrary} />
+            <StrategyLab initialView="library" userId={currentUser?.id} trades={trades} onStrategiesChange={setStrategyLibrary} />
           )}
 
           {activePage ===
@@ -2445,6 +2520,8 @@ function App() {
           <ScreenshotTradeWorkflow
             onClose={closeScreenshotWorkflow}
             onConfirm={confirmScreenshotExtraction}
+            strategies={strategyLibrary}
+            trades={trades}
             showConsent={showScreenshotConsent}
             onConsent={handleScreenshotConsent}
           />

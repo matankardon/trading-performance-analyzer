@@ -1,20 +1,15 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { INDICATOR_NAMES, SETUP_CONDITIONS } from "../../../src/constants/strategyOptions.js";
 import {
   getExtractionWarning,
   isValidExtraction,
   mergeExtractions,
+  processIndicators,
   processExtraction,
 } from "./postProcessing.ts";
 
-const conditionFields = [
-  "Liquidity Sweep",
-  "MSS",
-  "FVG",
-  "Displacement",
-  "Order Block",
-  "Stochastic Confirmation",
-];
+const conditionFields = SETUP_CONDITIONS.map(({ label }) => label);
 
 const conditionValues = [
   "NOT DETECTED",
@@ -152,14 +147,17 @@ Return only strict JSON matching this exact schema, with no markdown or extra ke
     "asset": "", "direction": "", "entry": "", "exit": "", "stopLoss": "", "takeProfit": "", "pnl": "", "date": "", "time": "", "timeframe": "", "positionSize": "", "riskReward": "", "strategy": ""
   },
   "conditionStates": {
-    "Liquidity Sweep": "NOT DETECTED", "MSS": "NOT DETECTED", "FVG": "NOT DETECTED", "Displacement": "NOT DETECTED", "Order Block": "NOT DETECTED", "Stochastic Confirmation": "NOT DETECTED"
+${SETUP_CONDITIONS.map(({ label }) => `    "${label}": "NOT DETECTED"`).join(",\n")}
   },
+  "indicators": [],
   "currentPrice": ""
 }
 
 For exit, fill only a distinct, clearly labeled closing or exit price; otherwise leave it empty. Use empty strings when the required evidence is absent, and never invent values.
 
 For each setup condition, use CONFIDENT, LIKELY, UNCERTAIN, or NOT DETECTED based on how clearly the visual evidence matches these definitions — never mark CONFIDENT without clear supporting evidence:
+
+For "indicators", return only names from this exact list when the indicator is clearly visible and its label/name is legible on the chart: ${INDICATOR_NAMES.join(", ")}. Do not infer an indicator from line colors or chart appearance alone. Return [] when no allowed indicator is clearly identified.
 
 Order Block: the last candle in the OPPOSITE direction of a move, immediately preceding a strong displacement in the other direction (bullish OB = last down-close/bearish candle right before a strong up-move; bearish OB = last up-close/bullish candle right before a strong down-move). Often drawn as a highlighted rectangle on the origin candle.
 
@@ -341,6 +339,8 @@ Deno.serve(async (request) => {
     secondParsed.extraction,
     firstParsed.conditionStates,
     secondParsed.conditionStates,
+    firstParsed.indicators,
+    secondParsed.indicators,
   );
   const currentPrice = typeof firstParsed.currentPrice === "string" ? firstParsed.currentPrice : "";
   const finalExtraction = processExtraction(merged.extraction, currentPrice);
@@ -348,6 +348,7 @@ Deno.serve(async (request) => {
   return jsonResponse({
     extraction: finalExtraction,
     conditionStates: merged.conditionStates,
+    indicators: processIndicators(merged.indicators),
     model,
     warning: getExtractionWarning(merged.hasMismatch),
   }, 200);

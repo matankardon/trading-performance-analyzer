@@ -1621,6 +1621,7 @@ nav {
 }
 
 .extraction-field input,
+.extraction-field select,
 .screenshot-notes textarea {
   width: 100%;
   border: 1px solid #dfe4ea;
@@ -4994,6 +4995,35 @@ nav {
   color: #374151;
 }
 
+.trade-metric-fields,
+.custom-trade-metric-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 10px;
+}
+
+.custom-trade-metrics {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.add-custom-metric,
+.remove-custom-metric {
+  width: fit-content;
+  border: 1px solid #d4dbe3;
+  border-radius: 6px;
+  padding: 8px 10px;
+  color: #374151;
+  background: #ffffff;
+  font-size: 12px;
+}
+
+.remove-custom-metric {
+  margin-bottom: 2px;
+}
+
 .quality-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -5242,7 +5272,9 @@ nav {
   }
 
   .checklist-grid,
-  .quality-grid {
+  .quality-grid,
+  .trade-metric-fields,
+  .custom-trade-metric-row {
     grid-template-columns: 1fr;
   }
 

@@ -8,6 +8,7 @@ import {
   isValidExtraction,
   mergeExtractions,
   parseNumber,
+  processIndicators,
   validateAndCalculateLevels,
 } from "./postProcessing";
 
@@ -44,6 +45,24 @@ describe("screenshot vision post-processing", () => {
     expect(result.conditionStates).toEqual(conditionStates);
     expect(result.hasMismatch).toBe(false);
     expect(getExtractionWarning(result.hasMismatch)).toContain("draft");
+  });
+
+  it("keeps only allowed indicator names and removes duplicates", () => {
+    expect(processIndicators(["SMA", "MACD", "SMA", "Moving Average", null])).toEqual(["SMA", "MACD"]);
+  });
+
+  it("keeps indicators only when both vision passes agree", () => {
+    const result = mergeExtractions(
+      extraction,
+      { ...extraction },
+      conditionStates,
+      { ...conditionStates },
+      ["SMA", "MACD", "unlisted"],
+      ["MACD", "RSI"],
+    );
+
+    expect(result.indicators).toEqual(["MACD"]);
+    expect(result.hasMismatch).toBe(true);
   });
 
   it("blanks numeric fields that disagree beyond the tolerance", () => {

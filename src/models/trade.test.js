@@ -14,6 +14,8 @@ describe("canonical trade model", () => {
       timeframe: "15m",
       strategy_version_id: "version-1",
       liquidity_sweep: true,
+      indicators: ["SMA", "MACD", "untrusted-indicator"],
+      metrics: { drawdownUsd: "125.50", drawdownPct: 2.5, custom: [{ name: "MAE", value: "140" }] },
       trade_quality: "A+ Setup",
     });
 
@@ -29,6 +31,8 @@ describe("canonical trade model", () => {
       timeframe: "15m",
       strategyVersionId: "version-1",
       liquiditySweep: true,
+      indicators: ["SMA", "MACD"],
+      metrics: { drawdownUsd: 125.5, drawdownPct: 2.5, custom: [{ name: "MAE", value: 140 }] },
       tradeQuality: "A+ Setup",
     });
   });
@@ -47,6 +51,8 @@ describe("canonical trade model", () => {
       time: "09:30",
       timeframe: "15m",
       liquiditySweep: true,
+      indicators: ["SMA", "MACD", "not-allowed"],
+      metrics: { drawdownUsd: "125.50", drawdownPct: "2.5", custom: [{ name: "MAE", value: "140" }] },
       strategyVersionId: "version-1",
     });
 
@@ -63,6 +69,17 @@ describe("canonical trade model", () => {
       timeframe: "15m",
       liquidity_sweep: true,
       strategy_version_id: "version-1",
+      indicators: ["SMA", "MACD"],
+      metrics: { drawdownUsd: 125.5, drawdownPct: 2.5, custom: [{ name: "MAE", value: 140 }] },
+    });
+  });
+
+  it("defaults optional indicators and metrics for legacy rows", () => {
+    expect(dbToTrade({}).indicators).toEqual([]);
+    expect(dbToTrade({}).metrics).toEqual({ drawdownUsd: "", drawdownPct: "", custom: [] });
+    expect(tradeToDb(emptyTrade)).toMatchObject({
+      indicators: [],
+      metrics: { drawdownUsd: null, drawdownPct: null, custom: [] },
     });
   });
 });

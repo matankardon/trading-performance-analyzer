@@ -1,3 +1,5 @@
+import { INDICATOR_NAMES } from "../constants/strategyOptions";
+
 export const emptyTrade = {
   id: null,
   userId: null,
@@ -16,6 +18,8 @@ export const emptyTrade = {
   timeframe: "",
   strategy: "",
   strategyVersionId: null,
+  indicators: [],
+  metrics: { drawdownUsd: "", drawdownPct: "", custom: [] },
   session: "New York",
   notes: "",
   liquiditySweep: false,
@@ -49,6 +53,20 @@ function nullableNumber(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function tradeMetrics(value) {
+  const metrics = value && typeof value === "object" ? value : {};
+  return {
+    drawdownUsd: nullableNumber(metrics.drawdownUsd) ?? "",
+    drawdownPct: nullableNumber(metrics.drawdownPct) ?? "",
+    custom: Array.isArray(metrics.custom)
+      ? metrics.custom.filter((metric) => metric && typeof metric === "object").map((metric) => ({
+        name: String(metric.name ?? ""),
+        value: nullableNumber(metric.value) ?? "",
+      }))
+      : [],
+  };
+}
+
 export function dbToTrade(row = {}) {
   const trade = {
     ...emptyTrade,
@@ -60,6 +78,10 @@ export function dbToTrade(row = {}) {
     direction: row.direction ?? "Long",
     strategy: row.strategy ?? "",
     strategyVersionId: row.strategy_version_id ?? null,
+    indicators: Array.isArray(row.indicators)
+      ? row.indicators.filter((indicator) => INDICATOR_NAMES.includes(indicator))
+      : [],
+    metrics: tradeMetrics(row.metrics),
     session: row.session ?? "New York",
     notes: row.notes ?? "",
     time: row.trade_time ?? "",
@@ -109,6 +131,21 @@ export function tradeToDb(trade = {}) {
     timeframe: trade.timeframe || null,
     strategy: trade.strategy || null,
     strategy_version_id: trade.strategyVersionId ?? null,
+    indicators: Array.isArray(trade.indicators)
+      ? [...new Set(trade.indicators.filter((indicator) => INDICATOR_NAMES.includes(indicator)))]
+      : [],
+    metrics: {
+      drawdownUsd: nullableNumber(trade.metrics?.drawdownUsd),
+      drawdownPct: nullableNumber(trade.metrics?.drawdownPct),
+      custom: Array.isArray(trade.metrics?.custom)
+        ? trade.metrics.custom
+          .filter((metric) => metric && typeof metric === "object" && (String(metric.name ?? "").trim() || metric.value !== "" && metric.value !== null && metric.value !== undefined))
+          .map((metric) => ({
+            name: String(metric.name ?? "").trim(),
+            value: nullableNumber(metric.value),
+          }))
+        : [],
+    },
     session: trade.session || "New York",
     notes: trade.notes || null,
     liquidity_sweep: Boolean(trade.liquiditySweep),

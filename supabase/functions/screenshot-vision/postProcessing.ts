@@ -1,3 +1,5 @@
+import { INDICATOR_NAMES, SETUP_CONDITIONS } from "../../../src/constants/strategyOptions.js";
+
 const extractionFields = [
   "asset",
   "direction",
@@ -33,14 +35,7 @@ const textExtractionFields = [
   "strategy",
 ];
 
-const conditionFields = [
-  "Liquidity Sweep",
-  "MSS",
-  "FVG",
-  "Displacement",
-  "Order Block",
-  "Stochastic Confirmation",
-];
+const conditionFields = SETUP_CONDITIONS.map(({ label }) => label);
 
 export const extractionWarning = "AI-extracted data is a draft — verify all fields before saving.";
 export const inconsistentExtractionWarning = "AI results were inconsistent across repeated checks — please verify every field carefully before saving.";
@@ -85,9 +80,12 @@ export function mergeExtractions(
   secondExtraction: Record<string, string>,
   firstConditionStates: Record<string, string>,
   secondConditionStates: Record<string, string>,
+  firstIndicators: unknown = [],
+  secondIndicators: unknown = [],
 ): {
   extraction: Record<string, string>;
   conditionStates: Record<string, string>;
+  indicators: string[];
   hasMismatch: boolean;
 } {
   let hasMismatch = false;
@@ -125,11 +123,32 @@ export function mergeExtractions(
     }
   });
 
-  return { extraction, conditionStates, hasMismatch };
+  const mergedIndicators = mergeIndicators(firstIndicators, secondIndicators);
+  hasMismatch ||= mergedIndicators.hasMismatch;
+
+  return { extraction, conditionStates, indicators: mergedIndicators.indicators, hasMismatch };
 }
 
 export function getExtractionWarning(hasMismatch: boolean): string {
   return hasMismatch ? inconsistentExtractionWarning : extractionWarning;
+}
+
+export function processIndicators(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((name): name is string => (
+    typeof name === "string" && INDICATOR_NAMES.includes(name)
+  )))];
+}
+
+function mergeIndicators(firstValue: unknown, secondValue: unknown): { indicators: string[]; hasMismatch: boolean } {
+  const first = processIndicators(firstValue);
+  const second = processIndicators(secondValue);
+  const secondSet = new Set(second);
+  const indicators = INDICATOR_NAMES.filter((name) => first.includes(name) && secondSet.has(name));
+  return {
+    indicators,
+    hasMismatch: first.length !== second.length || first.some((name) => !secondSet.has(name)),
+  };
 }
 
 export function deriveDirection(stopLoss: number | null, takeProfit: number | null): string | null {

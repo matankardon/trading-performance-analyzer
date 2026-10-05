@@ -28,6 +28,8 @@ import { calculateTakeProfitPercent } from "../services/backtestParameters";
 import { buildBacktestConfig } from "../services/backtestConfig";
 import { fetchHistoricalBars } from "../services/historicalDataService";
 import { ictEntryRule } from "../services/ictEntryRule";
+import { fetchStrategyLibrary } from "../services/strategyLibrary";
+import { compareForwardToBacktest, computeAdherence, computeForwardStats } from "../services/forwardTestStats";
 import { supportedHistoricalTimeframes } from "../../supabase/functions/_shared/timeframe";
 import TradeLog from "./TradeLog";
 import "./StrategyLab.css";
@@ -95,7 +97,7 @@ function saveRecentBacktestAsset(asset, previousAssets) {
 }
 
 function LabHeader({ view, onViewChange }) {
-  const tabs = [["library", "Strategy Library"], ["builder", "Strategy Builder"], ["backtesting", "Backtesting"], ["compare", "Version Compare"]];
+  const tabs = [["library", "Strategy Library"], ["builder", "Strategy Builder"], ["backtesting", "Backtesting"], ["compare", "Version Compare"], ["forward-test", "Forward Test"]];
   return (
     <header className="strategy-lab-header">
       <div><p className="eyebrow">STRATEGY DEVELOPMENT</p><h1>Strategy Lab</h1><p>Build a rule set, test a version, learn from the results, then improve it.</p></div>
@@ -341,8 +343,8 @@ function BacktestWorkspace({ strategies, request, setRequest, userId }) {
 }
 
 function VersionCompare({ strategies, selectedStrategy, userId }) {
-  const [compareStrategyId, setCompareStrategyId] = useState(selectedStrategy?.id || "");
-  const [savedRuns, setSavedRuns] = useState([]);
+  const [compareStrategyId, setCompareStrategyId] = useState(null);
+  const [savedRunsState, setSavedRunsState] = useState({ strategyId: "", runs: [] });
   const [selectedRunId, setSelectedRunId] = useState("");
   const [selectedRunBars, setSelectedRunBars] = useState([]);
   const [barsLoading, setBarsLoading] = useState(false);
@@ -350,31 +352,18 @@ function VersionCompare({ strategies, selectedStrategy, userId }) {
   const [compareRunAId, setCompareRunAId] = useState("");
   const [compareRunBId, setCompareRunBId] = useState("");
   const barsRequestId = useRef(0);
+  const activeStrategyId = compareStrategyId ?? selectedStrategy?.id ?? strategies[0]?.id ?? "";
+  const savedRuns = savedRunsState.strategyId === activeStrategyId ? savedRunsState.runs : [];
 
   useEffect(() => {
-    if (!selectedStrategy && strategies.length > 0 && !compareStrategyId) {
-      setCompareStrategyId(strategies[0].id);
-    }
-  }, [compareStrategyId, selectedStrategy, strategies]);
+    if (!userId || !activeStrategyId) return undefined;
 
-  useEffect(() => {
-    if (!userId || !compareStrategyId) {
-      setSavedRuns([]);
-      setSelectedRunId("");
-      setCompareRunAId("");
-      setCompareRunBId("");
-      return;
-    }
+    const strategy = strategies.find((entry) => entry.id === activeStrategyId) || selectedStrategy;
+    if (!strategy) return undefined;
 
     let active = true;
 
     async function loadSavedRuns() {
-      const strategy = strategies.find((entry) => entry.id === compareStrategyId) || selectedStrategy;
-      if (!strategy) {
-        setSavedRuns([]);
-        return;
-      }
-
       const versionIds = (strategy.versions || []).map((version) => version.id).filter(Boolean);
       const { data, error } = versionIds.length
         ? await supabase
@@ -391,7 +380,7 @@ function VersionCompare({ strategies, selectedStrategy, userId }) {
 
       if (!active) return;
       const nextRuns = (data || []).map(dbToBacktestResult);
-      setSavedRuns(nextRuns);
+      setSavedRunsState({ strategyId: activeStrategyId, runs: nextRuns });
       setSelectedRunId((current) => current && nextRuns.some((run) => run.id === current) ? current : nextRuns[0]?.id || "");
       setCompareRunAId((current) => current && nextRuns.some((run) => run.id === current) ? current : nextRuns[0]?.id || "");
       setCompareRunBId((current) => current && nextRuns.some((run) => run.id === current) ? current : nextRuns[1]?.id || "");
@@ -399,7 +388,7 @@ function VersionCompare({ strategies, selectedStrategy, userId }) {
 
     loadSavedRuns();
     return () => { active = false; };
-  }, [compareStrategyId, selectedStrategy, strategies, userId]);
+  }, [activeStrategyId, selectedStrategy, strategies, userId]);
 
   async function openSavedRun(result) {
     const requestId = ++barsRequestId.current;
@@ -445,7 +434,7 @@ function VersionCompare({ strategies, selectedStrategy, userId }) {
       <div className="version-compare-toolbar">
         <label>
           Strategy
-          <select value={compareStrategyId} onChange={(event) => setCompareStrategyId(event.target.value)}>
+          <select value={activeStrategyId} onChange={(event) => setCompareStrategyId(event.target.value)}>
             <option value="">Select strategy</option>
             {strategies.map((strategy) => (
               <option value={strategy.id} key={strategy.id}>{strategy.name}</option>
@@ -454,7 +443,7 @@ function VersionCompare({ strategies, selectedStrategy, userId }) {
         </label>
       </div>
 
-      {!compareStrategyId || savedRuns.length === 0 ? (
+      {!activeStrategyId || savedRuns.length === 0 ? (
         <EmptyEngineState
           title="No completed versions to compare"
           description="Run a backtest and it will save automatically here, then you can compare net P&L, win rate, profit factor, and trade count from earlier results."
@@ -589,39 +578,14 @@ function StrategyLab({ initialView = "library", userId, onStrategiesChange }) {
     let active = true;
 
     async function loadStrategies() {
-      if (!userId) {
-        setStrategies([]);
-        return;
+      try {
+        const nextStrategies = await fetchStrategyLibrary(userId);
+        if (!active) return;
+        setStrategies(nextStrategies);
+        onStrategiesChange?.(nextStrategies);
+      } catch (error) {
+        console.error("Could not load strategy library:", error);
       }
-
-      const { data: strategyRows, error: strategyError } = await supabase
-        .from("strategies")
-        .select("*")
-        .eq("user_id", userId)
-        .order("created_at", { ascending: false });
-
-      if (strategyError) {
-        console.error("Could not load strategies:", strategyError);
-        return;
-      }
-
-      const ids = (strategyRows || []).map((strategy) => strategy.id);
-      const { data: versionRows, error: versionError } = ids.length
-        ? await supabase.from("strategy_versions").select("*").in("strategy_id", ids).order("version_number", { ascending: false })
-        : { data: [], error: null };
-
-      if (versionError) {
-        console.error("Could not load strategy versions:", versionError);
-        return;
-      }
-
-      if (!active) return;
-      const nextStrategies = (strategyRows || []).map((strategy) => dbToStrategy(
-        strategy,
-        (versionRows || []).filter((version) => version.strategy_id === strategy.id).map(dbToStrategyVersion),
-      ));
-      setStrategies(nextStrategies);
-      onStrategiesChange?.(nextStrategies);
     }
 
     loadStrategies();

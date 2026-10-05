@@ -13,6 +13,7 @@ import {
   downloadSetupSnapshot,
   normalizeSetupSnapshot,
 } from "../services/setupSnapshot";
+import { SETUP_CONDITIONS } from "../constants/strategyOptions";
 
 const scoreFactors = [
   { label: "Market Structure", maximum: 25 },
@@ -52,12 +53,7 @@ const structureFields = [
 ];
 
 const strategyChecks = [
-  "Liquidity Sweep",
-  "MSS",
-  "Displacement",
-  "FVG",
-  "Order Block",
-  "Stochastic Confirmation",
+  ...SETUP_CONDITIONS.map(({ label }) => label),
   "Session",
   "Entry Timing",
 ];

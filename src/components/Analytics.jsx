@@ -12,15 +12,7 @@ import {
   Cell,
 } from "recharts";
 import "./Analytics.css";
-
-const setupConditions = [
-  ["liquiditySweep", "Liquidity Sweep"],
-  ["mss", "MSS"],
-  ["fvg", "FVG"],
-  ["displacement", "Displacement"],
-  ["orderBlock", "Order Block"],
-  ["stochasticConfirmation", "Stochastic Confirmation"],
-];
+import { SETUP_CONDITIONS } from "../constants/strategyOptions";
 
 function valueOf(trade) {
   return Number(trade.pnl || 0);
@@ -209,7 +201,7 @@ function Analytics({ trades = [] }) {
     return { largestWin, largestLoss, winningStreak: streaks.winningStreak, losingStreak: streaks.losingStreak, maxDrawdown: streaks.maxDrawdown, riskReward: performance.averageLoss ? performance.averageWin / performance.averageLoss : 0 };
   }, [orderedTrades, performance.averageLoss, performance.averageWin]);
 
-  const behaviorData = useMemo(() => setupConditions.map(([key, label]) => {
+  const behaviorData = useMemo(() => SETUP_CONDITIONS.map(({ key, label }) => {
     const matching = trades.filter((trade) => Boolean(trade[key]));
     const wins = matching.filter((trade) => valueOf(trade) > 0).length;
     return { label, trades: matching.length, winRate: matching.length ? Math.round((wins / matching.length) * 100) : 0 };
