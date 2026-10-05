@@ -46,6 +46,8 @@ describe("forward test statistics", () => {
     const allWins = computeForwardStats([trade(1, { pnl: 20 }), trade(2, { pnl: 30 })]);
     expect(allWins.profitFactor).toBe(Number.POSITIVE_INFINITY);
     expect(Number.isNaN(allWins.profitFactor)).toBe(false);
+
+    expect(computeForwardStats([trade(1, { riskReward: null })]).averageRiskReward).toBeNull();
   });
 
   it("computes mixed results, loss streak, ordering, and cumulative drawdown by hand", () => {
@@ -88,17 +90,19 @@ describe("forward test statistics", () => {
     const result = computeAdherence([
       trade(1, { liquiditySweep: true, mss: true, indicators: ["SMA"] }),
       trade(2, { liquiditySweep: true, indicators: ["SMA"] }),
-      trade(3, { mss: true, ruleBreak: true }),
+      trade(3, { liquiditySweep: true, mss: true, indicators: ["SMA"], ruleBreak: true }),
       { ...trade(4), strategyVersionId: null, liquiditySweep: true, mss: true, indicators: ["SMA"] },
     ], version);
 
     expect(result.tradeCount).toBe(3);
-    result.conditions.forEach(({ percentage }) => expect(percentage).toBeCloseTo(200 / 3, 10));
-    expect(result.fullyAdherentCount).toBe(1);
-    expect(result.fullyAdherentPercentage).toBeCloseTo(100 / 3, 10);
+    expect(result.conditions[0].percentage).toBe(100);
+    expect(result.conditions[1].percentage).toBeCloseTo(200 / 3, 10);
+    expect(result.conditions[2].percentage).toBe(100);
+    expect(result.fullyAdherentCount).toBe(2);
+    expect(result.fullyAdherentPercentage).toBeCloseTo(200 / 3, 10);
     expect(result.missingTrades).toEqual([
       expect.objectContaining({ id: "trade-2", missingConditions: ["MSS"], ruleBreak: false }),
-      expect.objectContaining({ id: "trade-3", missingConditions: ["Liquidity Sweep", "SMA"], ruleBreak: true }),
+      expect.objectContaining({ id: "trade-3", missingConditions: [], ruleBreak: true }),
     ]);
   });
 

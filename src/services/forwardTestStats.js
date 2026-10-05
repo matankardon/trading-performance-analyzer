@@ -106,7 +106,7 @@ export function computeForwardStats(trades) {
     maxConsecutiveLosses: expanded.maxConsecutiveLosses,
     maxDrawdownUsd: journaledDrawdown ?? derivedDrawdown(equityCurve),
     maxDrawdownPct: journaledDrawdownPct,
-    averageRiskReward: average(riskRewards),
+    averageRiskReward: riskRewards.length ? average(riskRewards) : null,
     sufficient: tradeCount >= 30,
     equityCurve,
     orderedTrades,
@@ -133,7 +133,7 @@ export function computeAdherence(trades, strategyVersion) {
   const versionTrades = orderedVersionTrades(trades)
     .filter((trade) => !versionId || tradeVersionId(trade) === versionId);
   const conditions = declaredConditions(strategyVersion);
-  const missingTrades = versionTrades.map((trade, index) => {
+  const evaluations = versionTrades.map((trade, index) => {
     const missingConditions = conditions
       .filter((condition) => !hasCondition(trade, condition))
       .map(({ label }) => label);
@@ -146,8 +146,9 @@ export function computeAdherence(trades, strategyVersion) {
       missingConditions,
       ruleBreak,
     };
-  }).filter(({ missingConditions, ruleBreak }) => missingConditions.length > 0 || ruleBreak);
-  const fullyAdherentCount = versionTrades.length - missingTrades.length;
+  });
+  const missingTrades = evaluations.filter(({ missingConditions, ruleBreak }) => missingConditions.length > 0 || ruleBreak);
+  const fullyAdherentCount = evaluations.filter(({ missingConditions }) => missingConditions.length === 0).length;
 
   return {
     tradeCount: versionTrades.length,
@@ -209,7 +210,7 @@ export function compareForwardToBacktest(forward, backtest) {
     winRate: finiteNumber(forward?.winRate) ?? 0,
     profitFactor: forward?.profitFactor ?? 0,
     expectancy: finiteNumber(forward?.expectancy) ?? 0,
-    averageRiskReward: finiteNumber(forward?.averageRiskReward) ?? 0,
+    averageRiskReward: finiteNumber(forward?.averageRiskReward),
   };
   return [
     { key: "winRate", label: "Win rate", forward: forwardValues.winRate, backtest: backtestValues.winRate, delta: metricDelta(forwardValues.winRate, backtestValues.winRate), suffix: "%" },

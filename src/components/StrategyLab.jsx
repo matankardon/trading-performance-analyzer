@@ -567,7 +567,173 @@ function VersionCompare({ strategies, selectedStrategy, userId }) {
   );
 }
 
-function StrategyLab({ initialView = "library", userId, onStrategiesChange }) {
+function formatForwardValue(value, metricKey) {
+  if (value === Number.POSITIVE_INFINITY) return "n/a";
+  if (!Number.isFinite(value)) return "n/a";
+  if (metricKey === "winRate") return `${value.toFixed(2)}%`;
+  if (metricKey === "expectancy") return formatCurrency(value);
+  if (metricKey === "averageRiskReward") return `${value.toFixed(2)}R`;
+  return value.toFixed(2);
+}
+
+function ForwardTest({ strategies, selectedStrategy, trades, userId }) {
+  const [strategyId, setStrategyId] = useState(selectedStrategy?.id || strategies[0]?.id || "");
+  const [versionId, setVersionId] = useState("");
+  const [savedRunsState, setSavedRunsState] = useState({ key: "", runs: [], error: "" });
+  const activeStrategy = strategies.find((strategy) => strategy.id === strategyId) || strategies[0] || null;
+  const activeVersion = activeStrategy?.versions.find((version) => version.id === versionId)
+    || activeStrategy?.versions[0]
+    || null;
+  const savedRunsKey = userId && activeStrategy ? `${userId}:${activeStrategy.id}` : "";
+  const hasLoadedSavedRuns = savedRunsState.key === savedRunsKey;
+  const savedRuns = hasLoadedSavedRuns ? savedRunsState.runs : [];
+  const isLoadingRuns = Boolean(savedRunsKey) && !hasLoadedSavedRuns;
+  const runsError = hasLoadedSavedRuns ? savedRunsState.error : "";
+
+  useEffect(() => {
+    if (!userId || !activeStrategy) return undefined;
+
+    let active = true;
+    const versionIds = activeStrategy.versions.map((version) => version.id).filter(Boolean);
+    const key = `${userId}:${activeStrategy.id}`;
+
+    async function loadSavedRuns() {
+      const { data, error } = versionIds.length
+        ? await supabase
+            .from("backtest_results")
+            .select("*")
+            .in("strategy_version_id", versionIds)
+            .order("created_at", { ascending: false })
+        : await Promise.resolve({ data: [], error: null });
+
+      if (!active) return;
+      setSavedRunsState({
+        key,
+        runs: error ? [] : (data || []).map(dbToBacktestResult),
+        error: error ? "Could not load saved backtests for this strategy." : "",
+      });
+    }
+
+    loadSavedRuns();
+    return () => { active = false; };
+  }, [activeStrategy, userId]);
+
+  const versionTrades = activeVersion
+    ? trades.filter((trade) => trade.strategyVersionId === activeVersion.id)
+    : [];
+  const stats = computeForwardStats(versionTrades);
+  const adherence = computeAdherence(versionTrades, activeVersion);
+  const savedBacktest = savedRuns.find((run) => run.strategyVersionId === activeVersion?.id) || null;
+  const comparison = compareForwardToBacktest(stats, savedBacktest);
+  const statItems = [
+    ["Trades", stats.tradeCount],
+    ["Wins / losses", `${stats.wins} / ${stats.losses}`],
+    ["Win rate", formatForwardValue(stats.winRate, "winRate")],
+    ["Net P&L", formatCurrency(stats.netPnl)],
+    ["Profit factor", formatForwardValue(stats.profitFactor, "profitFactor")],
+    ["Expectancy", formatCurrency(stats.expectancy)],
+    ["Average win", formatCurrency(stats.averageWin)],
+    ["Average loss", formatCurrency(stats.averageLoss)],
+    ["Largest win", formatCurrency(stats.largestWin)],
+    ["Largest loss", formatCurrency(stats.largestLoss)],
+    ["Max consecutive losses", stats.maxConsecutiveLosses],
+    ["Max drawdown", formatCurrency(stats.maxDrawdownUsd)],
+    ["Average R:R", formatForwardValue(stats.averageRiskReward, "averageRiskReward")],
+  ];
+
+  return (
+    <section className="strategy-lab-section forward-test-section">
+      <div className="strategy-section-heading">
+        <div>
+          <p className="eyebrow">JOURNALED PERFORMANCE</p>
+          <h2>Forward Test</h2>
+          <p>Journal results and recorded setup conditions, grouped by the exact strategy version used.</p>
+        </div>
+      </div>
+
+      <div className="forward-test-toolbar">
+        <label>Strategy<select value={activeStrategy?.id || ""} onChange={(event) => {
+          setStrategyId(event.target.value);
+          setVersionId("");
+        }}>
+          <option value="">Select strategy</option>
+          {strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}
+        </select></label>
+        <label>Strategy version<select value={activeVersion?.id || ""} onChange={(event) => setVersionId(event.target.value)} disabled={!activeStrategy}>
+          <option value="">Select version</option>
+          {(activeStrategy?.versions || []).map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}
+        </select></label>
+      </div>
+
+      {stats.tradeCount < 30 && <p className="forward-test-significance">Not statistically meaningful yet, aim for 100+.</p>}
+      {runsError && <p className="strategy-error-message" role="alert">{runsError}</p>}
+      {!runsError && !isLoadingRuns && activeVersion && !savedBacktest && <p className="forward-test-no-backtest">No backtest saved for this version</p>}
+      {!activeStrategy || !activeVersion ? (
+        <EmptyEngineState title="No strategy versions available" description="Create a strategy version before journal trades can be grouped into a forward test." />
+      ) : stats.tradeCount === 0 ? (
+        <EmptyEngineState title="No journaled trades for this version" description={`Trades linked to ${activeStrategy.name} v${activeVersion.version} will appear here after they are saved.`} />
+      ) : (
+        <>
+          <div className="forward-test-stat-grid">
+            {statItems.map(([label, value]) => <div className="forward-test-stat" key={label}><span>{label}</span><strong>{value}</strong></div>)}
+          </div>
+
+          <section className="forward-test-panel">
+            <p className="eyebrow">CUMULATIVE JOURNAL P&amp;L</p>
+            <div className="backtest-equity-chart">
+              <ResponsiveContainer width="100%" height={230}>
+                <LineChart data={stats.equityCurve} margin={{ top: 8, right: 12, left: 0, bottom: 8 }}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" stroke="rgba(150, 180, 205, 0.08)" />
+                  <XAxis dataKey="tradeNumber" stroke="#7f94a8" tick={{ fontSize: 10 }} />
+                  <YAxis tickFormatter={(value) => `$${Math.round(value)}`} stroke="#7f94a8" tick={{ fontSize: 10 }} />
+                  <Tooltip formatter={(value) => [formatCurrency(value), "Cumulative P&L"]} labelFormatter={(value) => `Trade ${value}`} />
+                  <Line type="monotone" dataKey="cumulativePnl" stroke="#65c4c4" strokeWidth={2} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+
+          <section className="forward-test-panel">
+            <p className="eyebrow">DECLARED CONDITION ADHERENCE</p>
+            {adherence.conditions.length ? <div className="forward-test-adherence-list">
+              {adherence.conditions.map((condition) => <div className="forward-test-adherence-row" key={condition.key}>
+                <span>{condition.label}</span>
+                <div className="forward-test-adherence-track" role="progressbar" aria-label={`${condition.label} checked`} aria-valuemin="0" aria-valuemax="100" aria-valuenow={condition.percentage}><span style={{ width: `${condition.percentage}%` }} /></div>
+                <strong>{condition.percentage.toFixed(0)}%</strong>
+              </div>)}
+              <p className="forward-test-adherence-summary">All declared conditions present: {adherence.fullyAdherentCount} / {adherence.tradeCount} ({adherence.fullyAdherentPercentage.toFixed(0)}%)</p>
+            </div> : <p className="forward-test-muted">No conditions were declared for this version.</p>}
+            <div className="forward-test-missing-list">
+              <h3>Trades missing conditions or marked as rule breaks</h3>
+              {adherence.missingTrades.length ? <ul>{adherence.missingTrades.map((trade) => <li key={trade.id}>
+                <strong>{trade.asset || "Trade"}</strong><span>{[trade.date, trade.time].filter(Boolean).join(" ") || "Date not recorded"}</span>
+                <span>{trade.missingConditions.length ? `Missing: ${trade.missingConditions.join(", ")}` : "All declared conditions present"}</span>
+                {trade.ruleBreak && <em>Rule break</em>}
+              </li>)}</ul> : <p className="forward-test-muted">No missing conditions or rule breaks recorded.</p>}
+            </div>
+          </section>
+
+          <section className="forward-test-panel">
+            <p className="eyebrow">FORWARD VS BACKTEST</p>
+            {isLoadingRuns ? <p className="forward-test-muted">Loading saved backtests...</p> : savedBacktest && comparison ? <div className="version-compare-table-wrap">
+              <table className="version-compare-table">
+                <thead><tr><th>Metric</th><th>Forward</th><th>Backtest</th><th>Delta</th></tr></thead>
+                <tbody>{comparison.map((metric) => <tr key={metric.key}>
+                  <td>{metric.label}</td>
+                  <td>{formatForwardValue(metric.forward, metric.key)}</td>
+                  <td>{formatForwardValue(metric.backtest, metric.key)}</td>
+                  <td>{metric.delta === null ? "n/a" : `${metric.delta > 0 ? "+" : ""}${formatForwardValue(metric.delta, metric.key)}`}</td>
+                </tr>)}</tbody>
+              </table>
+            </div> : <p className="forward-test-muted">A saved backtest is needed to compare these metrics.</p>}
+          </section>
+        </>
+      )}
+    </section>
+  );
+}
+
+function StrategyLab({ initialView = "library", userId, trades = [], onStrategiesChange }) {
   const [view, setView] = useState(initialView);
   const [strategies, setStrategies] = useState([]);
   const [draft, setDraft] = useState(createStrategyDraft());
@@ -650,6 +816,7 @@ function StrategyLab({ initialView = "library", userId, onStrategiesChange }) {
       {view === "builder" && <StrategyBuilder draft={draft} setDraft={setDraft} onSave={saveVersion} selectedStrategy={selectedStrategy} />}
       {view === "backtesting" && <BacktestWorkspace strategies={strategies} request={request} setRequest={setRequest} userId={userId} />}
       {view === "compare" && <VersionCompare strategies={strategies} selectedStrategy={selectedStrategy} userId={userId} />}
+      {view === "forward-test" && <ForwardTest strategies={strategies} selectedStrategy={selectedStrategy} trades={trades} userId={userId} />}
     </div>
   );
 }
