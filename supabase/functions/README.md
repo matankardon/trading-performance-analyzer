@@ -30,11 +30,10 @@ trade identifiers.
 
 Required Supabase project secrets/configuration:
 
-- `ANTHROPIC_API_KEY`: server-side Anthropic API key. This repository currently
-  has no Anthropic key configured; add this secret before deploying live AI
-  summaries. Never expose it to the client.
-- `ANTHROPIC_MODEL`: optional model name. Defaults to
-  `claude-haiku-4-5-20251001`.
+- `OPENAI_API_KEY`: server-side OpenAI API key, shared with `screenshot-vision`.
+  Never expose it to the client.
+- `COACH_MODEL`: optional OpenAI chat-completions model name. Defaults to
+  `gpt-4o-mini`.
 - `SUPABASE_URL` and `SUPABASE_ANON_KEY`: used to validate each caller's
   Supabase access token.
 

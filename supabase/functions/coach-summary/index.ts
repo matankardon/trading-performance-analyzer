@@ -65,50 +65,50 @@ async function readLimitedBody(request: Request): Promise<string | null> {
   return new TextDecoder().decode(bytes);
 }
 
-async function requestAnthropic(analysis: Record<string, unknown>, apiKey: string, model: string) {
+async function requestOpenAi(analysis: Record<string, unknown>, apiKey: string, model: string) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 20_000);
   const userPrompt = `Summarize this precomputed, anonymized Coaching analysis. Return only strict JSON with exactly these fields: {"summary":"string","strengths":["string"],"weaknesses":["string"],"focusNext":["string"]}. Use no more than 3 items in each list. Every item must name its source metric and cite the relevant sample size. Treat n<5 as tentative. Do not add identifiers or details not present in the aggregates.\n\nANALYSIS:\n${JSON.stringify(analysis)}`;
 
   try {
-    const response = await fetch("https://api.anthropic.com/v1/messages", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       signal: controller.signal,
       headers: {
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model,
         max_tokens: 900,
         temperature: 0,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: userPrompt }],
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
       }),
     });
 
-    if (!response.ok) return { error: `AI provider returned HTTP ${response.status}.` };
+    if (!response.ok) return { error: `OpenAI returned HTTP ${response.status}.` };
 
     let payload: unknown;
     try {
       payload = await response.json();
     } catch {
-      return { error: "AI provider returned a non-JSON response." };
+      return { error: "OpenAI returned a non-JSON response." };
     }
-    if (typeof payload !== "object" || payload === null || !("content" in payload) || !Array.isArray(payload.content)) {
-      return { error: "AI provider returned no summary content." };
-    }
-    const content = payload.content
-      .filter((block: unknown) => typeof block === "object" && block !== null && "type" in block && block.type === "text" && "text" in block && typeof block.text === "string")
-      .map((block: { text: string }) => block.text)
-      .join("\n");
-    return content.trim() ? { content } : { error: "AI provider returned no summary content." };
+    const content = typeof payload === "object" && payload !== null && "choices" in payload && Array.isArray(payload.choices)
+      ? payload.choices[0]?.message?.content
+      : null;
+    return typeof content === "string" && content.trim()
+      ? { content }
+      : { error: "OpenAI returned no summary content." };
   } catch (error) {
     return {
       error: error instanceof Error && error.name === "AbortError"
-        ? "AI summary request timed out. Please retry."
-        : "AI summary request failed. Please retry.",
+        ? "OpenAI request timed out. Please retry."
+        : "OpenAI request failed. Please retry.",
     };
   } finally {
     clearTimeout(timeout);
@@ -126,9 +126,9 @@ Deno.serve(async (request) => {
     return errorResponse("A valid Supabase access token is required.", 401);
   }
 
-  const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
+  const apiKey = Deno.env.get("OPENAI_API_KEY");
   if (!apiKey) {
-    return errorResponse("AI summary is not configured. Set ANTHROPIC_API_KEY for this Edge Function.", 500);
+    return errorResponse("AI summary is not configured. Set OPENAI_API_KEY for this Edge Function.", 500);
   }
 
   let bodyText: string | null;
@@ -153,8 +153,8 @@ Deno.serve(async (request) => {
     return errorResponse("Request must contain only valid precomputed Coaching aggregates.", 400);
   }
 
-  const model = Deno.env.get("ANTHROPIC_MODEL") || "claude-haiku-4-5-20251001";
-  const providerResult = await requestAnthropic(body.analysis, apiKey, model);
+  const model = Deno.env.get("COACH_MODEL") || "gpt-4o-mini";
+  const providerResult = await requestOpenAi(body.analysis, apiKey, model);
   if ("error" in providerResult) return errorResponse(providerResult.error, 502);
 
   const processed = processCoachSummary(providerResult.content, body.analysis);
