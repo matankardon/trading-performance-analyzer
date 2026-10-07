@@ -10,7 +10,7 @@ import { INDICATORS, SETUP_CONDITIONS } from "./constants/strategyOptions";
 import { fetchStrategyLibrary } from "./services/strategyLibrary";
 
 const Analytics = lazy(() => import("./components/Analytics"));
-const Coaching = lazy(() => import("./components/Coaching"));
+const Coaching = lazy(() => import("./components/CoachingChat"));
 const EconomicCalendar = lazy(() => import("./components/EconomicCalendar"));
 const MarketSentiment = lazy(() => import("./components/MarketSentiment"));
 const InvestingWorkspace = lazy(() => import("./components/InvestingWorkspace"));
