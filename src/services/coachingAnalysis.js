@@ -201,8 +201,9 @@ export function ruleBreakCost(trades) {
   };
 }
 
-function makeInsight(text, effectSize, groups) {
+function makeInsight(text, effectSize, groups, factorKey) {
   return {
+    factorKey,
     text,
     effectSize: Number.isFinite(effectSize) ? Math.abs(effectSize) : 0,
     evidence: groups.map(({ key, n, expectancy }) => ({ key, n, expectancy })),
@@ -225,26 +226,26 @@ export function generateInsights(analysis) {
       const absent = eligible.find(({ key }) => key === "Absent");
       if (!present || !absent) return;
       text = `Trades with ${factor.label} averaged ${formatMoney(present.expectancy)} per trade vs ${formatMoney(absent.expectancy)} without (n=${present.n} vs ${absent.n}).`;
-      insights.push(makeInsight(text, present.expectancy - absent.expectancy, [present, absent]));
+      insights.push(makeInsight(text, present.expectancy - absent.expectancy, [present, absent], factor.key));
       return;
     } else if (factor.dimension === "indicator") {
       const used = eligible.find(({ key }) => key === "Used");
       const notUsed = eligible.find(({ key }) => key === "Not used");
       if (!used || !notUsed) return;
       text = `Trades using ${factor.label} averaged ${formatMoney(used.expectancy)} per trade vs ${formatMoney(notUsed.expectancy)} without it (n=${used.n} vs ${notUsed.n}).`;
-      insights.push(makeInsight(text, used.expectancy - notUsed.expectancy, [used, notUsed]));
+      insights.push(makeInsight(text, used.expectancy - notUsed.expectancy, [used, notUsed], factor.key));
       return;
     } else if (factor.dimension === "ruleBreak") {
       const broken = eligible.find(({ key }) => key === "Yes");
       const clean = eligible.find(({ key }) => key === "No");
       if (!broken || !clean) return;
       text = `Clean trades averaged ${formatMoney(clean.expectancy)} per trade vs ${formatMoney(broken.expectancy)} with rule breaks (n=${clean.n} vs ${broken.n}).`;
-      insights.push(makeInsight(text, clean.expectancy - broken.expectancy, [clean, broken]));
+      insights.push(makeInsight(text, clean.expectancy - broken.expectancy, [clean, broken], factor.key));
       return;
     } else {
       text = `${factor.label}: ${high.key} trades averaged ${formatMoney(high.expectancy)} per trade vs ${formatMoney(low.expectancy)} for ${low.key} (n=${high.n} vs ${low.n}).`;
     }
-    insights.push(makeInsight(text, difference, [high, low]));
+    insights.push(makeInsight(text, difference, [high, low], factor.key));
   });
 
   return insights
@@ -270,4 +271,122 @@ export function analyzeCoaching(trades) {
   };
   analysis.insights = generateInsights(analysis);
   return analysis;
+}
+
+function alphabeticAlias(index) {
+  let value = index + 1;
+  let alias = "";
+  while (value > 0) {
+    value -= 1;
+    alias = String.fromCharCode(65 + (value % 26)) + alias;
+    value = Math.floor(value / 26);
+  }
+  return alias;
+}
+
+function publicGroupKeys(factor) {
+  const assigned = new Map();
+  const usedAliases = new Set();
+  factor.groups.forEach((group, index) => {
+    let key = group.key;
+    if (factor.key === "strategyVersion" && key !== "Unassigned") {
+      key = `Version ${alphabeticAlias(index)}`;
+    } else if (factor.key === "session" && !["New York", "London", "Asia", "Overlap", "Not recorded"].includes(key)) {
+      key = `Other session ${alphabeticAlias(index)}`;
+    }
+    while (usedAliases.has(key)) key = `Other group ${alphabeticAlias(index + usedAliases.size)}`;
+    assigned.set(group.key, key);
+    usedAliases.add(key);
+  });
+  return assigned;
+}
+
+function finiteMetric(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function publicGroup(group, key) {
+  return {
+    key,
+    n: group.n,
+    winRate: finiteMetric(group.winRate),
+    netPnl: finiteMetric(group.netPnl),
+    expectancy: finiteMetric(group.expectancy),
+    profitFactor: typeof group.profitFactor === "number" && Number.isFinite(group.profitFactor)
+      ? group.profitFactor
+      : "n/a",
+    averageRiskReward: finiteMetric(group.averageRiskReward),
+    lowSample: Boolean(group.lowSample),
+  };
+}
+
+export function toCoachSummaryAnalysis(analysis, filterRange = {}) {
+  const factors = (Array.isArray(analysis?.factors) ? analysis.factors : []).map((factor) => {
+    const groupKeys = publicGroupKeys(factor);
+    return {
+      key: factor.key,
+      label: factor.label,
+      groups: factor.groups.map((group) => publicGroup(group, groupKeys.get(group.key))),
+      groupKeys,
+    };
+  });
+  const publicFactors = factors.map(({ key, label, groups }) => ({ key, label, groups }));
+  const publicInsights = (Array.isArray(analysis?.insights) ? analysis.insights : []).slice(0, 5).flatMap((insight) => {
+    const factor = factors.find(({ key }) => key === insight.factorKey);
+    const evidence = (Array.isArray(insight.evidence) ? insight.evidence : []).map((item) => {
+      return {
+        key: factor?.groupKeys.get(item.key) || "Observed group",
+        n: item.n,
+        expectancy: finiteMetric(item.expectancy),
+      };
+    });
+    return factor && evidence.length
+      ? [{
+        factor: factor.label,
+        effectSize: finiteMetric(insight.effectSize) ?? 0,
+        evidence,
+      }]
+      : [];
+  });
+  const publicCombos = (combos) => (Array.isArray(combos) ? combos : []).slice(0, 3).map((combo) => ({
+    conditions: Array.isArray(combo.conditions) ? combo.conditions : [],
+    n: combo.n,
+    winRate: finiteMetric(combo.winRate),
+    netPnl: finiteMetric(combo.netPnl),
+    expectancy: finiteMetric(combo.expectancy),
+    profitFactor: typeof combo.profitFactor === "number" && Number.isFinite(combo.profitFactor)
+      ? combo.profitFactor
+      : "n/a",
+    averageRiskReward: finiteMetric(combo.averageRiskReward),
+  }));
+  const costGroup = (group) => ({
+    n: group.n,
+    averagePnl: finiteMetric(group.averagePnl),
+    totalPnl: finiteMetric(group.totalPnl),
+    lowSample: Boolean(group.lowSample),
+  });
+  const safeDate = (value) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? value
+    : null;
+
+  return {
+    totalTrades: Number.isInteger(analysis?.totalTrades) ? analysis.totalTrades : 0,
+    filterRange: {
+      from: safeDate(filterRange.from),
+      to: safeDate(filterRange.to),
+      strategyVersionFiltered: Boolean(filterRange.strategyVersionFiltered),
+    },
+    factors: publicFactors,
+    ruleBreakCost: {
+      ruleBreak: costGroup(analysis?.ruleBreakCost?.ruleBreak || {}),
+      clean: costGroup(analysis?.ruleBreakCost?.clean || {}),
+      averagePnlDifference: finiteMetric(analysis?.ruleBreakCost?.averagePnlDifference),
+      totalPnlDifference: finiteMetric(analysis?.ruleBreakCost?.totalPnlDifference),
+    },
+    combos: {
+      best: publicCombos(analysis?.combos?.best),
+      worst: publicCombos(analysis?.combos?.worst),
+    },
+    insights: publicInsights,
+  };
 }

@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
-import { analyzeCoaching, MIN_SAMPLE } from "../services/coachingAnalysis";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { supabase } from "../supabaseClient";
+import { analyzeCoaching, MIN_SAMPLE, toCoachSummaryAnalysis } from "../services/coachingAnalysis";
 import "./Coaching.css";
 
 function money(value, signed = false) {
@@ -10,6 +11,16 @@ function money(value, signed = false) {
 
 function percent(value) {
   return Number.isFinite(value) ? `${value.toFixed(1)}%` : "—";
+}
+
+async function functionErrorMessage(error) {
+  try {
+    const body = error?.context?.clone ? await error.context.clone().json() : error?.context;
+    if (body?.error || body?.detail) return body.error || body.detail;
+  } catch {
+    return error?.message || "AI summary request failed. Please retry.";
+  }
+  return error?.message || "AI summary request failed. Please retry.";
 }
 
 function Table({ factor }) {
@@ -68,6 +79,11 @@ function Coaching({ trades = [], strategyLibrary = [] }) {
   const [strategyVersion, setStrategyVersion] = useState("All");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [aiSummaryState, setAiSummaryState] = useState({ key: "", result: null, error: "" });
+  const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
+  const [cooldownUntil, setCooldownUntil] = useState(0);
+  const [cooldownClock, setCooldownClock] = useState(() => Date.now());
+  const summaryRequestInFlight = useRef(false);
 
   const versions = useMemo(() => strategyLibrary.flatMap((strategy) => (
     (strategy.versions || []).map((version) => ({
@@ -84,22 +100,77 @@ function Coaching({ trades = [], strategyLibrary = [] }) {
       && (!toDate || date && date <= toDate);
   }), [trades, strategyVersion, fromDate, toDate]);
   const analysis = useMemo(() => analyzeCoaching(filteredTrades), [filteredTrades]);
+  const summaryPayload = useMemo(() => toCoachSummaryAnalysis(analysis, {
+    from: fromDate || null,
+    to: toDate || null,
+    strategyVersionFiltered: strategyVersion !== "All",
+  }), [analysis, fromDate, toDate, strategyVersion]);
+  const summaryPayloadKey = JSON.stringify(summaryPayload);
+  const currentSummaryState = aiSummaryState.key === summaryPayloadKey ? aiSummaryState : null;
+  const currentSummary = currentSummaryState?.result || null;
+  const currentSummaryError = currentSummaryState?.error || "";
+  const cooldownRemaining = Math.max(0, Math.ceil((cooldownUntil - cooldownClock) / 1000));
+  const summaryDisabledReason = analysis.totalTrades === 0
+    ? trades.length === 0
+      ? "Log journal trades to enable AI summaries."
+      : "No journal trades match these filters; adjust the date range or strategy version."
+    : analysis.totalTrades < 30
+      ? `AI summaries are available after 30 trades; ${analysis.totalTrades} logged so far.`
+      : cooldownRemaining > 0
+        ? `You can generate another summary in ${cooldownRemaining}s.`
+        : "";
 
-  if (trades.length === 0) {
-    return (
-      <div className="coaching-page">
-        <header className="coaching-header">
-          <p className="eyebrow">JOURNAL-BASED PATTERNS</p>
-          <h1>Coaching</h1>
-          <p>Descriptive patterns from your recorded trades. Patterns are not proof of cause or future results.</p>
-        </header>
-        <div className="coaching-empty">
-          <span className="coaching-empty-mark" aria-hidden="true">+</span>
-          <h2>Start with a complete trade journal</h2>
-          <p>Log each trade’s result, session, setup conditions, indicators, trade quality, rule adherence, and strategy version. Coaching will summarize patterns from the records you save.</p>
-        </div>
-      </div>
-    );
+  useEffect(() => {
+    if (!cooldownUntil) return undefined;
+    const interval = setInterval(() => setCooldownClock(Date.now()), 250);
+    return () => clearInterval(interval);
+  }, [cooldownUntil]);
+
+  async function generateAiSummary() {
+    if (summaryRequestInFlight.current || analysis.totalTrades < 30 || analysis.totalTrades === 0 || cooldownRemaining > 0) return;
+    summaryRequestInFlight.current = true;
+    setIsGeneratingSummary(true);
+    setAiSummaryState({ key: summaryPayloadKey, result: null, error: "" });
+
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError) throw new Error(sessionError.message);
+      const accessToken = sessionData.session?.access_token;
+      if (!accessToken) throw new Error("A valid Supabase access token is required. Please sign in again.");
+
+      const { data, error } = await supabase.functions.invoke("coach-summary", {
+        body: { analysis: summaryPayload },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (error) throw new Error(await functionErrorMessage(error));
+      if (data?.ok !== true || typeof data.summary !== "string"
+        || !Array.isArray(data.strengths) || !Array.isArray(data.weaknesses) || !Array.isArray(data.focusNext)) {
+        throw new Error(data?.error || "AI summary returned an incomplete response. Please retry.");
+      }
+
+      setAiSummaryState({
+        key: summaryPayloadKey,
+        error: "",
+        result: {
+          summary: data.summary,
+          strengths: data.strengths,
+          weaknesses: data.weaknesses,
+          focusNext: data.focusNext,
+        },
+      });
+      const nextCooldown = Date.now() + 15_000;
+      setCooldownUntil(nextCooldown);
+      setCooldownClock(Date.now());
+    } catch (error) {
+      setAiSummaryState({
+        key: summaryPayloadKey,
+        result: null,
+        error: error instanceof Error ? error.message : "AI summary request failed. Please retry.",
+      });
+    } finally {
+      summaryRequestInFlight.current = false;
+      setIsGeneratingSummary(false);
+    }
   }
 
   return (
@@ -110,6 +181,46 @@ function Coaching({ trades = [], strategyLibrary = [] }) {
         <p>Descriptive patterns from recorded trades—not causes, predictions, or trade recommendations.</p>
       </header>
 
+      <section className="coaching-section coaching-ai-summary" aria-labelledby="coaching-ai-title">
+        <header className="coaching-section-heading">
+          <div><p className="eyebrow">GROUNDED JOURNAL SUMMARY</p><h2 id="coaching-ai-title">AI Summary</h2></div>
+          <button
+            type="button"
+            className="coaching-ai-button"
+            onClick={generateAiSummary}
+            disabled={Boolean(summaryDisabledReason) || isGeneratingSummary}
+          >
+            {isGeneratingSummary ? "Generating..." : currentSummary ? "Regenerate" : currentSummaryError ? "Retry summary" : "Generate AI summary"}
+          </button>
+        </header>
+        {summaryDisabledReason && <p className="coaching-ai-disabled-note">{summaryDisabledReason}</p>}
+        {isGeneratingSummary && <p className="coaching-ai-loading" role="status">Generating a grounded summary from the current Coaching aggregates...</p>}
+        {currentSummaryError && <p className="coaching-ai-error" role="alert">{currentSummaryError}</p>}
+        {currentSummary && (
+          <div className="coaching-ai-result">
+            <p className="coaching-ai-summary-text">{currentSummary.summary}</p>
+            <div className="coaching-ai-lists">
+              {[
+                ["Strengths", currentSummary.strengths],
+                ["Weaknesses", currentSummary.weaknesses],
+                ["Focus next", currentSummary.focusNext],
+              ].map(([title, items]) => <section key={title}>
+                <h3>{title}</h3>
+                {items.length ? <ul>{items.map((item) => <li key={item}>{item}</li>)}</ul> : <p>No grounded items returned.</p>}
+              </section>)}
+            </div>
+            <small>AI-generated from your journal stats, not financial advice.</small>
+          </div>
+        )}
+      </section>
+
+      {trades.length === 0 ? (
+        <div className="coaching-empty">
+          <span className="coaching-empty-mark" aria-hidden="true">+</span>
+          <h2>Start with a complete trade journal</h2>
+          <p>Log each trade’s result, session, setup conditions, indicators, trade quality, rule adherence, and strategy version. Coaching will summarize patterns from the records you save.</p>
+        </div>
+      ) : <>
       <div className="coaching-filters" aria-label="Filter coaching trades">
         <label>
           Strategy version
@@ -209,6 +320,7 @@ function Coaching({ trades = [], strategyLibrary = [] }) {
           ))}
         </div>
       </section>
+      </>}
       </>}
     </div>
   );

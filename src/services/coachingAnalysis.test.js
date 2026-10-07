@@ -5,6 +5,7 @@ import {
   groupStats,
   rankCombos,
   ruleBreakCost,
+  toCoachSummaryAnalysis,
 } from "./coachingAnalysis";
 
 function sampleTrades(pnls, overrides = {}) {
@@ -147,5 +148,29 @@ describe("coaching analysis", () => {
     expect(generateInsights({ factors })).toHaveLength(5);
     expect(generateInsights({ factors })[0].effectSize).toBe(7);
     expect(analyzeCoaching(Array.from({ length: 30 }, (_, index) => ({ pnl: index }))).sampleNotice).toBeNull();
+  });
+
+  it("projects aggregates without raw trade data, arbitrary labels, or strategy identifiers", () => {
+    const strategyId = "strategy-version-secret-id";
+    const analysis = analyzeCoaching([
+      ...sampleTrades([10, 12, 14, 16, 18], { strategyVersionId: strategyId, session: "Custom private label" }),
+      ...sampleTrades([-1, -2, -3, -4, -5], { strategyVersionId: "another-version-id", session: "Private session" }),
+    ]);
+    const payload = toCoachSummaryAnalysis(analysis, {
+      from: "2026-01-01",
+      to: "2026-01-31",
+      strategyVersionFiltered: false,
+    });
+    const serialized = JSON.stringify(payload);
+
+    expect(payload.filterRange).toEqual({ from: "2026-01-01", to: "2026-01-31", strategyVersionFiltered: false });
+    expect(serialized).not.toContain(strategyId);
+    expect(serialized).not.toContain("another-version-id");
+    expect(serialized).not.toContain("Custom private label");
+    expect(serialized).not.toContain("Private session");
+    expect(serialized).not.toContain('"id"');
+    expect(serialized).not.toContain('"pnl"');
+    expect(payload.factors.find(({ key }) => key === "strategyVersion").groups.map(({ key }) => key))
+      .toEqual(["Version A", "Version B"]);
   });
 });

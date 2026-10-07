@@ -18,3 +18,26 @@ Required Supabase project secrets/configuration:
 
 The response is intentionally a draft. The frontend must allow the user to
 verify and edit every value before saving it through the existing trade flow.
+
+## Coaching Summary Edge Function
+
+`supabase/functions/coach-summary` accepts an authenticated `POST` containing
+only a bounded, precomputed Coaching aggregate payload. The function rejects
+unknown fields, trade rows, and unrecognized category values, validates the
+user JWT with Supabase Auth, and grounds generated text against numeric values
+in the submitted aggregates. It does not receive trade notes, screenshots, or
+trade identifiers.
+
+Required Supabase project secrets/configuration:
+
+- `ANTHROPIC_API_KEY`: server-side Anthropic API key. This repository currently
+  has no Anthropic key configured; add this secret before deploying live AI
+  summaries. Never expose it to the client.
+- `ANTHROPIC_MODEL`: optional model name. Defaults to
+  `claude-haiku-4-5-20251001`.
+- `SUPABASE_URL` and `SUPABASE_ANON_KEY`: used to validate each caller's
+  Supabase access token.
+
+The function deploy workflow triggers for changes under `supabase/functions/**`.
+The Coaching summary must be deployed alongside its tests/post-processing files
+by pushing those changes to `main`.
