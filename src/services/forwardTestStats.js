@@ -70,14 +70,33 @@ function average(values) {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : 0;
 }
 
-export function computeForwardStats(trades) {
-  const orderedTrades = orderedVersionTrades(trades);
-  const tradeCount = orderedTrades.length;
-  const wins = orderedTrades.filter((trade) => trade.pnl > 0);
-  const losses = orderedTrades.filter((trade) => trade.pnl < 0);
+export function computeTradeStats(trades) {
+  const normalizedTrades = (Array.isArray(trades) ? trades : [])
+    .map((trade) => ({ ...trade, pnl: pnlValue(trade) }));
+  const wins = normalizedTrades.filter((trade) => trade.pnl > 0);
+  const losses = normalizedTrades.filter((trade) => trade.pnl < 0);
   const grossProfit = wins.reduce((sum, trade) => sum + trade.pnl, 0);
   const grossLoss = losses.reduce((sum, trade) => sum + Math.abs(trade.pnl), 0);
-  const netPnl = orderedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const netPnl = normalizedTrades.reduce((sum, trade) => sum + trade.pnl, 0);
+  const riskRewards = normalizedTrades
+    .map((trade) => finiteNumber(trade.riskReward ?? trade.risk_reward))
+    .filter((value) => value !== null);
+
+  return {
+    tradeCount: normalizedTrades.length,
+    wins: wins.length,
+    losses: losses.length,
+    winRate: normalizedTrades.length ? (wins.length / normalizedTrades.length) * 100 : 0,
+    netPnl,
+    expectancy: normalizedTrades.length ? netPnl / normalizedTrades.length : 0,
+    profitFactor: grossLoss ? grossProfit / grossLoss : grossProfit ? Number.POSITIVE_INFINITY : 0,
+    averageRiskReward: riskRewards.length ? average(riskRewards) : null,
+  };
+}
+
+export function computeForwardStats(trades) {
+  const orderedTrades = orderedVersionTrades(trades);
+  const summary = computeTradeStats(orderedTrades);
   const equityCurve = cumulativeCurve(orderedTrades);
   const expanded = calculateExpandedMetrics(
     orderedTrades.map((trade) => ({ ...trade, entryIndex: 0, exitIndex: 0 })),
@@ -85,20 +104,17 @@ export function computeForwardStats(trades) {
     0,
     1,
   );
-  const riskRewards = orderedTrades
-    .map((trade) => finiteNumber(trade.riskReward))
-    .filter((value) => value !== null);
   const journaledDrawdown = journaledMaximum(orderedTrades, "drawdownUsd");
   const journaledDrawdownPct = journaledMaximum(orderedTrades, "drawdownPct");
 
   return {
-    tradeCount,
-    wins: wins.length,
-    losses: losses.length,
-    winRate: tradeCount ? (wins.length / tradeCount) * 100 : 0,
-    netPnl,
-    profitFactor: grossLoss ? grossProfit / grossLoss : grossProfit ? Number.POSITIVE_INFINITY : 0,
-    expectancy: tradeCount ? netPnl / tradeCount : 0,
+    tradeCount: summary.tradeCount,
+    wins: summary.wins,
+    losses: summary.losses,
+    winRate: summary.winRate,
+    netPnl: summary.netPnl,
+    profitFactor: summary.profitFactor,
+    expectancy: summary.expectancy,
     averageWin: expanded.averageWin,
     averageLoss: expanded.averageLoss,
     largestWin: expanded.largestWin,
@@ -106,8 +122,8 @@ export function computeForwardStats(trades) {
     maxConsecutiveLosses: expanded.maxConsecutiveLosses,
     maxDrawdownUsd: journaledDrawdown ?? derivedDrawdown(equityCurve),
     maxDrawdownPct: journaledDrawdownPct,
-    averageRiskReward: riskRewards.length ? average(riskRewards) : null,
-    sufficient: tradeCount >= 30,
+    averageRiskReward: summary.averageRiskReward,
+    sufficient: summary.tradeCount >= 30,
     equityCurve,
     orderedTrades,
   };

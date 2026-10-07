@@ -10,6 +10,7 @@ import { INDICATORS, SETUP_CONDITIONS } from "./constants/strategyOptions";
 import { fetchStrategyLibrary } from "./services/strategyLibrary";
 
 const Analytics = lazy(() => import("./components/Analytics"));
+const Coaching = lazy(() => import("./components/Coaching"));
 const EconomicCalendar = lazy(() => import("./components/EconomicCalendar"));
 const MarketSentiment = lazy(() => import("./components/MarketSentiment"));
 const InvestingWorkspace = lazy(() => import("./components/InvestingWorkspace"));
@@ -2251,6 +2252,7 @@ function App() {
       { page: "Sentiment", label: "Sentiment", icon: "SN" },
       { page: "Trades", label: "Trades", icon: "TR" },
       { page: "Analytics", label: "Analytics", icon: "AN" },
+      { page: "Coaching", label: "Coaching", icon: "CO" },
       ]
     : [
         { page: "Overview", label: "Overview", icon: "OV" },
@@ -2439,6 +2441,10 @@ function App() {
             <Analytics
               trades={trades}
             />
+          )}
+
+          {isDayTrading && activePage === "Coaching" && (
+            <Coaching trades={trades} strategyLibrary={strategyLibrary} />
           )}
 
           {isDayTrading && activePage === "Events & News" && (
