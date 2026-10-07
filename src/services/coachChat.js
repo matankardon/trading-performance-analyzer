@@ -38,37 +38,81 @@ export async function addLatestBacktests(strategies) {
   }));
 }
 
-export async function loadLatestCoachConversation() {
-  const { data: latest, error: latestError } = await supabase
-    .from("coach_messages")
-    .select("id,conversation_id,created_at")
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  if (latestError) throw new Error(latestError.message || "Could not load saved conversations.");
-  if (!latest) return { conversationId: null, messages: [] };
+export async function loadCoachConversations() {
+  const { data, error } = await supabase
+    .from("coach_conversations")
+    .select("id,title,created_at,updated_at")
+    .order("updated_at", { ascending: false });
+  if (error) throw new Error(error.message || "Could not load conversation history.");
+  return data || [];
+}
 
+export async function loadCoachConversation(conversationId) {
   const { data, error } = await supabase
     .from("coach_messages")
     .select("id,role,content,created_at")
-    .eq("conversation_id", latest.conversation_id)
-    .order("created_at", { ascending: true });
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true });
   if (error) throw new Error(error.message || "Could not load saved messages.");
-  return {
-    conversationId: latest.conversation_id,
-    messages: (data || [])
-      .filter((message) => ["user", "assistant"].includes(message.role) && typeof message.content === "string")
-      .map((message) => ({ id: message.id, role: message.role, content: message.content })),
-  };
+  return (data || [])
+    .filter((message) => ["user", "assistant"].includes(message.role) && typeof message.content === "string")
+    .map((message) => ({ id: message.id, role: message.role, content: message.content }));
 }
 
-export async function saveCoachReply(conversationId, userMessage, assistantMessage) {
-  const { data, error } = await supabase.from("coach_messages").insert([
-    ...(userMessage === null ? [] : [{ conversation_id: conversationId, role: "user", content: userMessage }]),
-    { conversation_id: conversationId, role: "assistant", content: assistantMessage },
-  ]).select("id,role");
-  if (error) throw new Error(error.message || "Could not save this conversation.");
-  return data || [];
+export async function createCoachConversation(id, title) {
+  const { data, error } = await supabase
+    .from("coach_conversations")
+    .insert({ id, title })
+    .select("id,title,created_at,updated_at")
+    .single();
+  if (error) throw new Error(error.message || "Could not create this conversation.");
+  return data;
+}
+
+export async function renameCoachConversation(id, title) {
+  const { data, error } = await supabase
+    .from("coach_conversations")
+    .update({ title, updated_at: new Date().toISOString() })
+    .eq("id", id)
+    .select("id,title,created_at,updated_at")
+    .single();
+  if (error) throw new Error(error.message || "Could not rename this conversation.");
+  return data;
+}
+
+export async function deleteCoachConversation(id) {
+  const { error } = await supabase.from("coach_conversations").delete().eq("id", id);
+  if (error) throw new Error(error.message || "Could not delete this conversation.");
+}
+
+export async function saveCoachUserMessage(conversationId, content) {
+  const { data, error } = await supabase
+    .from("coach_messages")
+    .insert({ conversation_id: conversationId, role: "user", content })
+    .select("id,role")
+    .single();
+  if (error) throw new Error(error.message || "Could not save your message.");
+  return data;
+}
+
+export async function saveCoachAssistantReply(conversationId, content) {
+  const { data, error } = await supabase
+    .from("coach_messages")
+    .insert({ conversation_id: conversationId, role: "assistant", content })
+    .select("id,role")
+    .single();
+  if (error) throw new Error(error.message || "Could not save the coach reply.");
+  await touchCoachConversation(conversationId);
+  return data;
+}
+
+async function touchCoachConversation(conversationId) {
+  const { error } = await supabase
+    .from("coach_conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", conversationId);
+  if (error) throw new Error(error.message || "Could not update conversation time.");
 }
 
 export async function deleteCoachMessage(messageId) {

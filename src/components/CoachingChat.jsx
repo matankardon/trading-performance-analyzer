@@ -4,11 +4,17 @@ import remarkGfm from "remark-gfm";
 import { buildCoachContext, MIN_COACH_TRADES } from "../services/coachContext";
 import {
   addLatestBacktests,
+  createCoachConversation,
+  deleteCoachConversation,
   deleteCoachMessage,
-  loadLatestCoachConversation,
+  loadCoachConversation,
+  loadCoachConversations,
+  renameCoachConversation,
   requestCoachReply,
-  saveCoachReply,
+  saveCoachAssistantReply,
+  saveCoachUserMessage,
 } from "../services/coachChat";
+import { deriveConversationTitle, groupConversations, relativeConversationTime } from "../services/coachHistory";
 import "./CoachingChat.css";
 
 const prompts = [
@@ -53,15 +59,26 @@ function CoachMessage({ message, isLastAssistant, onCopy, onRegenerate, copied }
 
 function CoachingChat({ trades = [], strategyLibrary = [] }) {
   const [strategies, setStrategies] = useState(strategyLibrary);
+  const [conversations, setConversations] = useState([]);
+  const [activeConversationId, setActiveConversationId] = useState("");
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingConversation, setIsLoadingConversation] = useState(true);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
+  const [historyOpen, setHistoryOpen] = useState(true);
+  const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
+  const [activeTitle, setActiveTitle] = useState("New chat");
+  const [editingConversationId, setEditingConversationId] = useState("");
+  const [renameDraft, setRenameDraft] = useState("");
+  const [actionMenuId, setActionMenuId] = useState("");
   const [chatError, setChatError] = useState("");
   const [persistenceNotice, setPersistenceNotice] = useState("");
   const [copiedMessage, setCopiedMessage] = useState("");
   const requestInFlight = useRef(false);
   const conversationIdRef = useRef("");
+  const conversationExistsRef = useRef(false);
   const textareaRef = useRef(null);
   const threadRef = useRef(null);
 
@@ -77,24 +94,48 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     return () => { active = false; };
   }, [strategyLibrary]);
 
+  async function refreshConversations() {
+    const updated = await loadCoachConversations();
+    setConversations(updated);
+    return updated;
+  }
+
   useEffect(() => {
     let active = true;
-    loadLatestCoachConversation()
-      .then((conversation) => {
+    async function loadHistory() {
+      try {
+        const list = await loadCoachConversations();
         if (!active) return;
-        const id = conversation.conversationId || createId();
-        conversationIdRef.current = id;
-        setMessages(conversation.messages);
-      })
-      .catch((error) => {
+        setConversations(list);
+        const latest = list[0];
+        if (latest) {
+          setIsLoadingConversation(true);
+          const loadedMessages = await loadCoachConversation(latest.id);
+          if (!active) return;
+          conversationIdRef.current = latest.id;
+          setActiveConversationId(latest.id);
+          conversationExistsRef.current = true;
+          setActiveTitle(latest.title);
+          setMessages(loadedMessages.map((message) => ({ ...message, persisted: true })));
+        } else {
+          conversationIdRef.current = createId();
+          setActiveConversationId(conversationIdRef.current);
+          conversationExistsRef.current = false;
+        }
+      } catch (error) {
         if (!active) return;
-        const id = createId();
-        conversationIdRef.current = id;
-        setPersistenceNotice(`Saved conversation could not be loaded: ${error.message}`);
-      })
-      .finally(() => {
-        if (active) setIsLoadingConversation(false);
-      });
+        setHistoryError(error.message || "Could not load conversation history.");
+        conversationIdRef.current = createId();
+        setActiveConversationId(conversationIdRef.current);
+        conversationExistsRef.current = false;
+      } finally {
+        if (active) {
+          setIsHistoryLoading(false);
+          setIsLoadingConversation(false);
+        }
+      }
+    }
+    loadHistory();
     return () => { active = false; };
   }, []);
 
@@ -112,13 +153,74 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     if (requestInFlight.current) return;
     const id = createId();
     conversationIdRef.current = id;
+    setActiveConversationId(id);
+    conversationExistsRef.current = false;
+    setActiveTitle("New chat");
     setMessages([]);
     setDraft("");
     setChatError("");
     setPersistenceNotice("");
+    setMobileHistoryOpen(false);
   }
 
-  async function completeReply(text, history, appendUserMessage, persistUserMessage = appendUserMessage, replaceMessage = null) {
+  async function openConversation(conversation) {
+    if (requestInFlight.current || conversation.id === conversationIdRef.current) {
+      setMobileHistoryOpen(false);
+      return;
+    }
+    setIsLoadingConversation(true);
+    setChatError("");
+    setHistoryError("");
+    try {
+      const loadedMessages = await loadCoachConversation(conversation.id);
+      conversationIdRef.current = conversation.id;
+      setActiveConversationId(conversation.id);
+      conversationExistsRef.current = true;
+      setActiveTitle(conversation.title);
+      setMessages(loadedMessages.map((message) => ({ ...message, persisted: true })));
+      setDraft("");
+      setMobileHistoryOpen(false);
+    } catch (error) {
+      setHistoryError(error.message || "Could not open this conversation.");
+    } finally {
+      setIsLoadingConversation(false);
+    }
+  }
+
+  function beginRename(conversation) {
+    setEditingConversationId(conversation.id);
+    setRenameDraft(conversation.title);
+    setActionMenuId("");
+  }
+
+  async function commitRename(conversation) {
+    const title = renameDraft.replace(/\s+/g, " ").trim().slice(0, 60);
+    if (!title) return;
+    try {
+      const renamed = await renameCoachConversation(conversation.id, title);
+      setConversations((current) => current.map((item) => item.id === renamed.id ? renamed : item));
+      if (conversation.id === conversationIdRef.current) setActiveTitle(renamed.title);
+      setEditingConversationId("");
+      setHistoryError("");
+    } catch (error) {
+      setHistoryError(error.message || "Could not rename this conversation.");
+    }
+  }
+
+  async function removeConversation(conversation) {
+    const shouldDelete = window.confirm(`Delete "${conversation.title}" and its messages? This cannot be undone.`);
+    if (!shouldDelete) return;
+    try {
+      await deleteCoachConversation(conversation.id);
+      setConversations((current) => current.filter((item) => item.id !== conversation.id));
+      setActionMenuId("");
+      if (conversation.id === conversationIdRef.current) startNewChat();
+    } catch (error) {
+      setHistoryError(error.message || "Could not delete this conversation.");
+    }
+  }
+
+  async function completeReply(text, history, appendUserMessage, persistUserMessage = appendUserMessage, replaceMessage = null, existingUserId = "") {
     if (requestInFlight.current || !hasEnoughTrades || isLoadingConversation) return;
     requestInFlight.current = true;
     setIsLoading(true);
@@ -126,25 +228,54 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     setPersistenceNotice("");
     const userDisplayId = appendUserMessage ? createId() : null;
     const assistantDisplayId = createId();
-    if (appendUserMessage) setMessages((current) => [...current, { id: userDisplayId, role: "user", content: text }]);
+    if (appendUserMessage) setMessages((current) => [...current, { id: userDisplayId, role: "user", content: text, persisted: false }]);
+
+    try {
+      if (!conversationExistsRef.current) {
+        const title = deriveConversationTitle(text);
+        const created = await createCoachConversation(conversationIdRef.current, title);
+        conversationExistsRef.current = true;
+        setActiveConversationId(created.id);
+        setActiveTitle(created.title);
+        setConversations((current) => [created, ...current.filter((item) => item.id !== created.id)]);
+      }
+    } catch (error) {
+      setPersistenceNotice(`Conversation could not be saved yet: ${error.message}`);
+    }
+
+    try {
+      if (persistUserMessage && conversationExistsRef.current) {
+        const savedUser = await saveCoachUserMessage(conversationIdRef.current, text);
+        const targetUserId = userDisplayId || existingUserId;
+        setMessages((current) => current.map((message) => message.id === targetUserId
+          ? { ...message, id: savedUser.id, persisted: true }
+          : message));
+      }
+    } catch (error) {
+      setPersistenceNotice(`Your message could not be saved, but coaching will continue: ${error.message}`);
+    }
 
     try {
       const reply = await requestCoachReply(text, history, context);
       setMessages((current) => [...current, { id: assistantDisplayId, role: "assistant", content: reply }]);
-      try {
-        const saved = await saveCoachReply(conversationIdRef.current, persistUserMessage ? text : null, reply);
-        const savedAssistantId = saved.find((item) => item.role === "assistant")?.id;
-        if (savedAssistantId) {
+      if (conversationExistsRef.current) {
+        try {
+          const savedAssistant = await saveCoachAssistantReply(conversationIdRef.current, reply);
           setMessages((current) => current.map((message) => message.id === assistantDisplayId
-            ? { ...message, id: savedAssistantId }
+            ? { ...message, id: savedAssistant.id }
             : message));
-        }
+          const updated = await refreshConversations();
+          const activeConversation = updated.find((item) => item.id === conversationIdRef.current);
+          if (activeConversation) setActiveTitle(activeConversation.title);
         if (replaceMessage?.id) {
           await deleteCoachMessage(replaceMessage.id);
           setMessages((current) => current.filter((message) => message.id !== replaceMessage.id));
         }
-      } catch (error) {
-        setPersistenceNotice(`Reply is available, but could not be saved: ${error.message}`);
+        } catch (error) {
+          setPersistenceNotice(`Reply is available, but could not be saved: ${error.message}`);
+        }
+      } else {
+        setPersistenceNotice("Reply is available, but conversation storage is unavailable.");
       }
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Coach request failed. Please try again.");
@@ -168,7 +299,7 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     const lastUser = [...messages].reverse().find((message) => message.role === "user");
     if (!lastUser) return;
     const userIndex = messages.findIndex((message) => message.id === lastUser.id);
-    completeReply(lastUser.content, chatHistory(messages.slice(0, userIndex)), false, true);
+    completeReply(lastUser.content, chatHistory(messages.slice(0, userIndex)), false, !lastUser.persisted, null, lastUser.id);
   }
 
   function regenerateMessage(message) {
@@ -205,68 +336,132 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     event.target.style.height = `${Math.min(event.target.scrollHeight, 180)}px`;
   }
 
+  const groupedConversations = groupConversations(conversations);
+
   return (
-    <main className="coaching-chat">
-      <header className="coach-header">
-        <div><h1>Coach</h1><span>{context.totalTrades} trades</span></div>
-        <button type="button" className="coach-new-chat" onClick={startNewChat} disabled={isLoading}>New chat</button>
-      </header>
-
-      {!hasEnoughTrades ? (
-        <section className="coach-gate" aria-live="polite">
-          <span className="coach-avatar coach-avatar-large" aria-hidden="true">C</span>
-          <h2>Log 10 trades to start coaching ({context.totalTrades}/10)</h2>
-          <p>Your coach uses journaled results and context to discuss patterns in your trading.</p>
-        </section>
-      ) : (
-        <>
-          <section className="coach-thread" ref={threadRef} aria-label="Coach conversation" aria-live="polite">
-            {isLoadingConversation && <p className="coach-thread-status">Loading conversation...</p>}
-            {!messages.length && !isLoadingConversation && (
-              <div className="coach-welcome">
-                <span className="coach-avatar coach-avatar-large" aria-hidden="true">C</span>
-                <h2>What would you like to understand about your trading?</h2>
-                <p>I’ll use your journal data and label small samples as tentative.</p>
+    <main className={`coaching-chat${historyOpen ? "" : " history-collapsed"}${mobileHistoryOpen ? " mobile-history-open" : ""}`}>
+      {mobileHistoryOpen && <button className="coach-history-backdrop" type="button" aria-label="Close history" onClick={() => setMobileHistoryOpen(false)} />}
+      <aside className="coach-history-panel" aria-label="Chat history">
+        <header className="coach-history-header">
+          <strong>History</strong>
+          <button type="button" className="coach-history-close" aria-label="Close history" onClick={() => setMobileHistoryOpen(false)}>×</button>
+        </header>
+        <button type="button" className="coach-history-new" onClick={startNewChat} disabled={isLoading}>+ New chat</button>
+        <div className="coach-history-list">
+          {isHistoryLoading && <p className="coach-history-state">Loading history...</p>}
+          {historyError && <div className="coach-history-error" role="alert"><span>{historyError}</span><button type="button" onClick={async () => {
+            setHistoryError("");
+            setIsHistoryLoading(true);
+            try {
+              const entries = await refreshConversations();
+              if (entries.length && !conversationExistsRef.current) await openConversation(entries[0]);
+            } catch (error) {
+              setHistoryError(error.message || "Could not load conversation history.");
+            } finally {
+              setIsHistoryLoading(false);
+            }
+          }}>Retry</button></div>}
+          {!isHistoryLoading && !historyError && conversations.length === 0 && <p className="coach-history-state">No past chats yet</p>}
+          {groupedConversations.map((group) => <section className="coach-history-group" key={group.label}>
+            <h2>{group.label}</h2>
+            {group.conversations.map((conversation) => (
+              <div className={`coach-history-row${conversation.id === activeConversationId ? " active" : ""}`} key={conversation.id}>
+                {editingConversationId === conversation.id ? (
+                  <form className="coach-history-rename" onSubmit={(event) => { event.preventDefault(); commitRename(conversation); }}>
+                    <input autoFocus value={renameDraft} maxLength={60} onChange={(event) => setRenameDraft(event.target.value)} aria-label="Conversation title" onKeyDown={(event) => {
+                      if (event.key === "Escape") setEditingConversationId("");
+                    }} />
+                    <div><button type="submit">Save</button><button type="button" onClick={() => setEditingConversationId("")}>Cancel</button></div>
+                  </form>
+                ) : (
+                  <>
+                    <button type="button" className="coach-history-open" onClick={() => openConversation(conversation)} aria-current={conversation.id === activeConversationId ? "page" : undefined}>
+                      <span>{conversation.title}</span>
+                      <small>{relativeConversationTime(conversation.updated_at)}</small>
+                    </button>
+                    <div className="coach-history-actions">
+                      <button type="button" aria-label={`Actions for ${conversation.title}`} aria-expanded={actionMenuId === conversation.id} onClick={() => setActionMenuId((current) => current === conversation.id ? "" : conversation.id)}>⋯</button>
+                      {actionMenuId === conversation.id && <div className="coach-history-menu">
+                        <button type="button" onClick={() => beginRename(conversation)}>Rename</button>
+                        <button type="button" onClick={() => removeConversation(conversation)}>Delete</button>
+                      </div>}
+                    </div>
+                  </>
+                )}
               </div>
-            )}
-            {messages.map((message, index) => (
-              <CoachMessage
-                key={message.id}
-                message={message}
-                isLastAssistant={index === lastAssistantIndex}
-                onCopy={copyMessage}
-                onRegenerate={regenerateMessage}
-                copied={copiedMessage === message.id}
-              />
             ))}
-            {isLoading && <div className="coach-typing" role="status"><span className="coach-avatar" aria-hidden="true">C</span><span>Thinking...</span></div>}
-            {chatError && <div className="coach-chat-error" role="alert"><span>{chatError}</span><button type="button" onClick={retryLastMessage} disabled={isLoading}>Retry</button></div>}
-          </section>
+          </section>)}
+        </div>
+      </aside>
 
-          <footer className="coach-composer-area">
-            <div className={`coach-prompt-chips${messages.length ? " compact" : ""}`} aria-label="Example prompts">
-              {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => sendMessage(prompt)} disabled={isLoading || isLoadingConversation}>{prompt}</button>)}
-            </div>
-            {persistenceNotice && <p className="coach-persistence-notice" role="status">{persistenceNotice}</p>}
-            <div className="coach-composer">
-              <textarea
-                ref={textareaRef}
-                value={draft}
-                onChange={handleDraftChange}
-                onKeyDown={handleComposerKeyDown}
-                maxLength={2000}
-                rows={1}
-                placeholder="Ask your coach anything about your trading"
-                aria-label="Ask your coach anything about your trading"
-                disabled={isLoading || isLoadingConversation}
-              />
-              <button type="button" onClick={() => sendMessage()} disabled={isLoading || isLoadingConversation || !draft.trim()} aria-label="Send message">Send</button>
-              <small>{draft.length}/2000</small>
-            </div>
-            <p className="coach-disclaimer">Journal-based patterns, not financial advice.</p>
-          </footer>
-        </>
-      )}
+      <section className="coach-main">
+        <header className="coach-header">
+          <div className="coach-header-title">
+            <button type="button" className="coach-history-toggle" onClick={() => {
+              if (window.innerWidth <= 700) setMobileHistoryOpen((open) => !open);
+              else setHistoryOpen((open) => !open);
+            }}>History</button>
+            <div><h1>Coach</h1><span>{context.totalTrades} trades</span></div>
+          </div>
+          <span className="coach-active-title" title={activeTitle}>{activeTitle === "New chat" ? "" : activeTitle}</span>
+        </header>
+
+        {!hasEnoughTrades ? (
+          <section className="coach-gate" aria-live="polite">
+            <span className="coach-avatar coach-avatar-large" aria-hidden="true">C</span>
+            <h2>Log 10 trades to start coaching ({context.totalTrades}/10)</h2>
+            <p>Your coach uses journaled results and context to discuss patterns in your trading.</p>
+          </section>
+        ) : (
+          <>
+            <section className="coach-thread" ref={threadRef} aria-label="Coach conversation" aria-live="polite">
+              {isLoadingConversation && <p className="coach-thread-status">Loading conversation...</p>}
+              {!messages.length && !isLoadingConversation && (
+                <div className="coach-welcome">
+                  <span className="coach-avatar coach-avatar-large" aria-hidden="true">C</span>
+                  <h2>What would you like to understand about your trading?</h2>
+                  <p>I’ll use your journal data and label small samples as tentative.</p>
+                </div>
+              )}
+              {messages.map((message, index) => (
+                <CoachMessage
+                  key={message.id}
+                  message={message}
+                  isLastAssistant={index === lastAssistantIndex}
+                  onCopy={copyMessage}
+                  onRegenerate={regenerateMessage}
+                  copied={copiedMessage === message.id}
+                />
+              ))}
+              {isLoading && <div className="coach-typing" role="status"><span className="coach-avatar" aria-hidden="true">C</span><span>Thinking...</span></div>}
+              {chatError && <div className="coach-chat-error" role="alert"><span>{chatError}</span><button type="button" onClick={retryLastMessage} disabled={isLoading}>Retry</button></div>}
+            </section>
+
+            <footer className="coach-composer-area">
+              <div className={`coach-prompt-chips${messages.length ? " compact" : ""}`} aria-label="Example prompts">
+                {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => sendMessage(prompt)} disabled={isLoading || isLoadingConversation}>{prompt}</button>)}
+              </div>
+              {persistenceNotice && <p className="coach-persistence-notice" role="status">{persistenceNotice}</p>}
+              <div className="coach-composer">
+                <textarea
+                  ref={textareaRef}
+                  value={draft}
+                  onChange={handleDraftChange}
+                  onKeyDown={handleComposerKeyDown}
+                  maxLength={2000}
+                  rows={1}
+                  placeholder="Ask your coach anything about your trading"
+                  aria-label="Ask your coach anything about your trading"
+                  disabled={isLoading || isLoadingConversation}
+                />
+                <button type="button" onClick={() => sendMessage()} disabled={isLoading || isLoadingConversation || !draft.trim()} aria-label="Send message">Send</button>
+                <small>{draft.length}/2000</small>
+              </div>
+              <p className="coach-disclaimer">Journal-based patterns, not financial advice.</p>
+            </footer>
+          </>
+        )}
+      </section>
     </main>
   );
 }

@@ -1,12 +1,273 @@
 .coaching-chat {
-  display: flex;
-  width: min(100%, 760px);
+  display: grid;
+  width: min(100%, 1280px);
   height: calc(100dvh - 156px);
   min-height: 420px;
   margin: 0 auto;
-  flex-direction: column;
+  grid-template-columns: 238px minmax(0, 760px);
+  justify-content: center;
+  gap: 24px;
   color: #FFFFFF;
   font-family: var(--font-mono);
+}
+
+.coaching-chat.history-collapsed {
+  grid-template-columns: minmax(0, 760px);
+}
+
+.coach-main {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.coach-history-panel {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 12px 8px;
+  border-right: 1px solid var(--color-border);
+  background: var(--color-bg);
+}
+
+.history-collapsed .coach-history-panel {
+  display: none;
+}
+
+.coach-history-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 8px 12px;
+  color: #FFFFFF;
+  font-size: 11px;
+}
+
+.coach-history-close {
+  display: none;
+  border: 0;
+  padding: 3px 7px;
+  background: transparent;
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.coach-history-new {
+  width: 100%;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  border-radius: 6px;
+  padding: 10px;
+  background: rgba(212, 175, 55, 0.06);
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coach-history-new:hover:not(:disabled) {
+  border-color: var(--color-gold);
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.coach-history-new:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.coach-history-list {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  margin-top: 14px;
+}
+
+.coach-history-group + .coach-history-group {
+  margin-top: 16px;
+}
+
+.coach-history-group h2 {
+  padding: 0 8px 6px;
+  color: var(--color-gold);
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.coach-history-row {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 3px;
+  border-radius: 6px;
+  margin: 2px 0;
+  color: #FFFFFF;
+}
+
+.coach-history-row.active {
+  background: rgba(212, 175, 55, 0.12);
+  box-shadow: inset 2px 0 0 var(--color-gold);
+}
+
+.coach-history-row:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.coach-history-open {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 4px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px;
+  background: transparent;
+  color: #FFFFFF;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coach-history-open span {
+  overflow: hidden;
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coach-history-open small {
+  color: #FFFFFF;
+  font-size: 8px;
+  opacity: 0.55;
+}
+
+.coach-history-actions {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.coach-history-actions > button {
+  width: 27px;
+  height: 28px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: #FFFFFF;
+  font: inherit;
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.coach-history-actions > button:hover,
+.coach-history-actions > button[aria-expanded="true"] {
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--color-gold);
+}
+
+.coach-history-menu {
+  position: absolute;
+  z-index: 4;
+  top: 26px;
+  right: 0;
+  display: grid;
+  width: 110px;
+  padding: 4px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-bg-elevated);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+}
+
+.coach-history-menu button,
+.coach-history-rename button {
+  border: 0;
+  border-radius: 4px;
+  padding: 7px;
+  background: transparent;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coach-history-menu button:hover,
+.coach-history-rename button:hover {
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--color-gold);
+}
+
+.coach-history-menu button:last-child {
+  color: #FFFFFF;
+}
+
+.coach-history-rename {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  padding: 6px;
+}
+
+.coach-history-rename input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--color-gold);
+  border-radius: 4px;
+  padding: 6px;
+  background: #0D0D0D;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.coach-history-rename > div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+}
+
+.coach-history-rename button {
+  padding: 5px;
+}
+
+.coach-history-state {
+  padding: 10px 8px;
+  color: #FFFFFF;
+  font-size: 9px;
+  line-height: 1.6;
+  opacity: 0.6;
+}
+
+.coach-history-error {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  color: #FFFFFF;
+  font-size: 9px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.coach-history-error button {
+  justify-self: start;
+  border: 1px solid var(--color-gold);
+  border-radius: 4px;
+  padding: 5px 8px;
+  background: transparent;
+  color: var(--color-gold);
+  font: inherit;
+  cursor: pointer;
+}
+
+.coach-history-backdrop {
+  display: none;
 }
 
 .coach-header {
@@ -16,6 +277,38 @@
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--color-border);
+}
+
+.coach-header-title {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.coach-history-toggle {
+  border: 1px solid rgba(212, 175, 55, 0.38);
+  border-radius: 5px;
+  padding: 6px 8px;
+  background: transparent;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.coach-history-toggle:hover {
+  border-color: var(--color-gold);
+  color: var(--color-gold);
+}
+
+.coach-active-title {
+  min-width: 0;
+  overflow: hidden;
+  color: #FFFFFF !important;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.55;
 }
 
 .coach-header > div {
@@ -399,9 +692,58 @@
 
 @media (max-width: 700px) {
   .coaching-chat {
+    position: relative;
+    display: block;
     width: 100%;
     height: calc(100dvh - 120px);
     min-height: 380px;
+  }
+
+  .coach-main {
+    height: 100%;
+  }
+
+  .coach-history-panel {
+    position: fixed;
+    z-index: 20;
+    inset: 0 auto 0 0;
+    width: min(310px, 86vw);
+    padding: 16px 10px;
+    border-right: 1px solid var(--color-border);
+    background: var(--color-bg-elevated);
+    box-shadow: 18px 0 45px rgba(0, 0, 0, 0.45);
+    transform: translateX(-110%);
+    transition: transform 180ms ease;
+  }
+
+  .history-collapsed .coach-history-panel {
+    display: flex;
+  }
+
+  .mobile-history-open .coach-history-panel {
+    transform: translateX(0);
+  }
+
+  .coach-history-close {
+    display: inline-grid;
+    place-items: center;
+  }
+
+  .coach-history-backdrop {
+    position: fixed;
+    z-index: 19;
+    inset: 0;
+    display: block;
+    border: 0;
+    background: rgba(0, 0, 0, 0.65);
+  }
+
+  .coach-header-title {
+    gap: 8px;
+  }
+
+  .coach-history-toggle {
+    padding: 6px;
   }
 
   .coach-header {
