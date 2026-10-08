@@ -50,6 +50,15 @@ function localDateString(date) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function savedChartSymbol() {
+  try {
+    const saved = JSON.parse(localStorage.getItem("tradeCatalystChartSelection") || "{}");
+    return typeof saved.symbol === "string" ? saved.symbol.toUpperCase() : "";
+  } catch {
+    return "";
+  }
+}
+
 function LazyViewFallback() {
   return (
     <div className="workflow-loading" role="status" aria-live="polite">
@@ -62,8 +71,9 @@ function LazyViewFallback() {
 function App() {
   const [activeMode, setActiveMode] = useState("DAY TRADING");
   const [activePage, setActivePage] = useState("Overview");
-  const [selectedAsset, setSelectedAsset] = useState("");
+  const [selectedAsset, setSelectedAsset] = useState(savedChartSymbol);
   const [strategyLibrary, setStrategyLibrary] = useState([]);
+  const [coachInitialPrompt, setCoachInitialPrompt] = useState("");
 
   const [showTradeForm, setShowTradeForm] = useState(false);
   const [showTradeEntryChoice, setShowTradeEntryChoice] = useState(false);
@@ -421,6 +431,20 @@ function App() {
     setScreenshotAiExtraction(null);
     setScreenshotAnnotations({});
     setForm(tradeDraftToForm(draft, strategyLibrary, emptyTrade));
+    setShowTradeForm(true);
+  }
+
+  function openStrategyTrade(prefill) {
+    setEditingTrade(null);
+    setScreenshotFile(null);
+    setScreenshotAiExtraction(null);
+    setScreenshotAnnotations({});
+    setForm({
+      ...emptyTrade,
+      date: localDateString(new Date()),
+      ...prefill,
+      indicators: Array.isArray(prefill?.indicators) ? prefill.indicators : [],
+    });
     setShowTradeForm(true);
   }
 
@@ -875,13 +899,26 @@ function App() {
   */
 
   function renderDashboard(page = "Overview") {
+    const assetCounts = new Map();
+    trades.forEach((trade) => {
+      const asset = String(trade.asset ?? "").trim().toUpperCase();
+      if (asset) assetCounts.set(asset, (assetCounts.get(asset) || 0) + 1);
+    });
+    const defaultAsset = [...assetCounts.entries()].sort((left, right) => right[1] - left[1])[0]?.[0] || "";
     return (
       <DayTradingDashboard
         page={page}
         trades={trades}
+        strategyLibrary={strategyLibrary}
         loadingTrades={loadingTrades}
         onAddTrade={openTradeEntryChoice}
-        selectedAsset={selectedAsset}
+        onLogTrade={openStrategyTrade}
+        onAskCoach={(prompt) => {
+          setCoachInitialPrompt(prompt);
+          setActivePage("Coaching");
+        }}
+        onViewTrade={setSelectedTrade}
+        selectedAsset={selectedAsset || defaultAsset}
         onAssetChange={setSelectedAsset}
         onPageChange={setActivePage}
       />
@@ -1967,6 +2004,8 @@ function App() {
             <Coaching
               trades={trades}
               strategyLibrary={strategyLibrary}
+              initialPrompt={coachInitialPrompt}
+              onInitialPromptConsumed={() => setCoachInitialPrompt("")}
               screenshotConsentAcknowledged={Boolean(
                 (currentUser?.id && screenshotConsentUserId === currentUser.id)
                   || currentUser?.user_metadata?.screenshot_consent_acknowledged,

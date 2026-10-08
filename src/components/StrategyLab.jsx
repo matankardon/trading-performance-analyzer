@@ -26,7 +26,7 @@ import { dbToBacktestResult, backtestResultToDb } from "../models/backtestResult
 import { runBacktest } from "../services/backtestEngine";
 import { calculateTakeProfitPercent } from "../services/backtestParameters";
 import { buildBacktestConfig } from "../services/backtestConfig";
-import { fetchHistoricalBars } from "../services/historicalDataService";
+import { fetchHistoricalBars, historicalAssetSuggestions } from "../services/historicalDataService";
 import { ictEntryRule } from "../services/ictEntryRule";
 import { fetchStrategyLibrary } from "../services/strategyLibrary";
 import { compareForwardToBacktest, computeAdherence, computeForwardStats } from "../services/forwardTestStats";
@@ -34,7 +34,6 @@ import { supportedHistoricalTimeframes } from "../../supabase/functions/_shared/
 import TradeLog from "./TradeLog";
 import "./StrategyLab.css";
 
-const backtestAssets = ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "SPY", "QQQ"];
 const backtestSessions = ["All sessions", "New York", "London", "Asia", "Overlap"];
 const recentBacktestAssetsStorageKey = "tradeCatalystRecentBacktestAssets";
 
@@ -308,7 +307,7 @@ function BacktestWorkspace({ strategies, request, setRequest, userId }) {
       <div className="backtest-request-grid">
         <label><FieldLabel helpId="strategy" helpText="Which saved strategy version&apos;s enabled conditions to test.">Strategy</FieldLabel><select value={request.strategyId} onChange={(event) => update("strategyId", event.target.value)}><option value="">Select strategy</option>{strategies.map((strategy) => <option value={strategy.id} key={strategy.id}>{strategy.name}</option>)}</select></label>
         <label><FieldLabel helpId="version" helpText="Which saved strategy version&apos;s enabled conditions to test.">Strategy version</FieldLabel><select value={request.versionId} onChange={(event) => update("versionId", event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{versions.map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label>
-        <label><FieldLabel helpId="asset" helpText="Ticker symbol to test, e.g. AAPL.">Asset</FieldLabel><input list="recent-backtest-assets" value={request.asset} onChange={(event) => update("asset", event.target.value.toUpperCase())} placeholder="Ticker, e.g. AAPL" autoComplete="off" /><datalist id="recent-backtest-assets">{recentAssets.map((asset) => <option value={asset} key={asset} />)}{backtestAssets.map((asset) => <option value={asset} key={`common-${asset}`} />)}</datalist></label>
+        <label><FieldLabel helpId="asset" helpText="Ticker symbol to test, e.g. AAPL.">Asset</FieldLabel><input list="recent-backtest-assets" value={request.asset} onChange={(event) => update("asset", event.target.value.toUpperCase())} placeholder="Ticker, e.g. AAPL" autoComplete="off" /><datalist id="recent-backtest-assets">{recentAssets.map((asset) => <option value={asset} key={asset} />)}{historicalAssetSuggestions.map((asset) => <option value={asset} key={`common-${asset}`} />)}</datalist></label>
         <label><FieldLabel helpId="timeframe" helpText="Candle size. Smaller means more bars and more noise; wide ranges on small timeframes load slowly.">Timeframe</FieldLabel><select value={request.timeframe} onChange={(event) => update("timeframe", event.target.value)}><option value="">Select timeframe</option>{supportedHistoricalTimeframes.map(({ value }) => <option value={value} key={value}>{value}</option>)}</select></label>
         <label><FieldLabel helpId="start-date" helpText="Period of history to test. More history generally makes results more reliable.">Start date</FieldLabel><input type="date" value={request.startDate} onChange={(event) => update("startDate", event.target.value)} /></label>
         <label><FieldLabel helpId="end-date" helpText="Period of history to test. More history generally makes results more reliable.">End date</FieldLabel><input type="date" value={request.endDate} onChange={(event) => update("endDate", event.target.value)} /></label>

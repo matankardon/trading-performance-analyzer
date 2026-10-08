@@ -1,5 +1,7 @@
 import { supabase } from "../supabaseClient";
 
+export const historicalAssetSuggestions = Object.freeze(["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "SPY", "QQQ"]);
+
 function getFunctionErrorMessage(error) {
   return error?.detail || error?.message || "Historical data request failed.";
 }

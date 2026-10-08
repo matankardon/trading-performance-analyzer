@@ -22,6 +22,7 @@ const snapshotFields = [
   "setupConditions",
   "setupScore",
   "marketTradingScore",
+  "journaledTrades",
 ];
 
 function hasValue(value) {

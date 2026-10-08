@@ -8,12 +8,8 @@ import {
   RadialBarChart,
   ResponsiveContainer,
 } from "recharts";
-import {
-  copySetupSnapshot,
-  downloadSetupSnapshot,
-  normalizeSetupSnapshot,
-} from "../services/setupSnapshot";
-import { SETUP_CONDITIONS } from "../constants/strategyOptions";
+import ChartWorkspace from "./ChartWorkspace";
+import StrategyWorkspace from "./StrategyWorkspace";
 
 const scoreFactors = [
   { label: "Market Structure", maximum: 25 },
@@ -50,12 +46,6 @@ const structureFields = [
   ["Market Structure Shift", "marketStructureShift"],
   ["Fair Value Gap", "fairValueGap"],
   ["Order Block", "orderBlock"],
-];
-
-const strategyChecks = [
-  ...SETUP_CONDITIONS.map(({ label }) => label),
-  "Session",
-  "Entry Timing",
 ];
 
 function unavailable(value) {
@@ -305,55 +295,6 @@ function MarketStructure({ conditions }) {
   );
 }
 
-function StrategyReadiness({ strategy }) {
-  return (
-    <section className="decision-panel strategy-module">
-      <SectionHeader eyebrow="YOUR STRATEGY" title="Pre-entry checklist" description="Market Trading Score and Setup Score remain independent decision-support signals." status="Chart analysis pending" icon="07" />
-      <div className="strategy-layout">
-        <div className="strategy-checks">{strategyChecks.map((check) => <div className="strategy-check" key={check}><span>{check}</span><strong>{strategy?.[check] || "Waiting for chart analysis"}</strong></div>)}</div>
-        <div className="setup-score-card"><span>SETUP SCORE</span><strong>{strategy?.score || "--"}</strong><small>How well the setup matches your strategy</small><span className="decision-badge">{strategy?.state || "Decision unavailable"}</span></div>
-      </div>
-      <SourceMeta source={strategy?.source} updated={strategy?.updated} status={strategy?.status || "Unavailable"} />
-    </section>
-  );
-}
-
-function SetupExport({ symbol }) {
-  const [message, setMessage] = useState("");
-
-  async function handleCopy() {
-    const snapshot = normalizeSetupSnapshot({
-      symbol: symbol.trim() || undefined,
-      timestamp: new Date().toISOString(),
-    });
-    const copied = await copySetupSnapshot(snapshot);
-    setMessage(copied ? "Setup snapshot copied" : "Clipboard unavailable; download the snapshot instead");
-  }
-
-  function handleDownload() {
-    downloadSetupSnapshot(normalizeSetupSnapshot({
-      symbol: symbol.trim() || undefined,
-      timestamp: new Date().toISOString(),
-    }));
-    setMessage("Setup snapshot downloaded");
-  }
-
-  return (
-    <section className="setup-export-panel">
-      <div>
-        <p className="eyebrow">CHART / SETUP ANALYSIS</p>
-        <h2>Carry the plan to TradingView</h2>
-        <p>Direct drawing insertion into a normal TradingView workspace is not connected. Export the canonical snapshot for manual chart review instead.</p>
-      </div>
-      <div className="setup-export-actions">
-        <button className="secondary-btn" type="button" onClick={handleCopy}>Copy setup snapshot</button>
-        <button className="add-trade-btn" type="button" onClick={handleDownload}>Export setup to TradingView</button>
-      </div>
-      <small className="setup-export-note">Only available values are included. {message || "No setup levels have been detected."}</small>
-    </section>
-  );
-}
-
 function QuickAccess({ onPageChange }) {
   const links = [
     ["Markets", "Market"],
@@ -456,30 +397,18 @@ function MarketPage({ market, conditions, selectedAsset, onAssetChange }) {
   );
 }
 
-function StrategyPage({ strategy, selectedAsset, onPageChange }) {
-  return (
-    <>
-      <div className="workspace-page-heading"><p className="eyebrow">STRATEGY WORKSPACE</p><h1>Setup diagnostic</h1><p>Review the current market, conditions, and final setup state before execution.</p></div>
-      <section className="strategy-market-context"><span>Current market</span><strong>{selectedAsset || "Selected market unavailable"}</strong><small>Market analysis and chart detection will populate this context.</small></section>
-      <StrategyReadiness strategy={strategy} />
-      <div className="strategy-final-state"><div><p className="eyebrow">FINAL STATE</p><h2>{strategy.state || "Decision unavailable"}</h2></div><p>Do not treat this as a prediction. The final state requires sufficient market and setup data.</p></div>
-      <SetupExport symbol={selectedAsset} />
-      <button type="button" className="text-button workspace-back-link" onClick={() => onPageChange("Overview")}>Back to Overview</button>
-    </>
-  );
-}
-
-function ChartPage({ selectedAsset }) {
-  return (
-    <>
-      <div className="workspace-page-heading"><p className="eyebrow">CHART WORKSPACE</p><h1>{selectedAsset || "Selected market"}</h1><p>Visual analysis will become the primary surface for levels, zones, and strategy annotations.</p></div>
-      <section className="chart-workspace"><div className="chart-workspace-toolbar"><span>Chart canvas</span><span className="section-status">Waiting for chart data</span></div><UnavailableState title="Chart analysis is not connected" description="Swing levels, liquidity, FVG, order blocks, MSS, entry, stop, and target annotations will appear here when chart data is available." /></section>
-      <SetupExport symbol={selectedAsset} />
-    </>
-  );
-}
-
-function DayTradingDashboard({ page = "Overview", onAddTrade, selectedAsset = "", onAssetChange, onPageChange = () => {} }) {
+function DayTradingDashboard({
+  page = "Overview",
+  trades = [],
+  strategyLibrary = [],
+  onAddTrade,
+  onLogTrade,
+  onAskCoach,
+  onViewTrade,
+  selectedAsset = "",
+  onAssetChange,
+  onPageChange = () => {},
+}) {
   const market = {};
   const score = {};
   const conditions = {};
@@ -493,8 +422,8 @@ function DayTradingDashboard({ page = "Overview", onAddTrade, selectedAsset = ""
       </header>
       {page === "Overview" && <OverviewPage market={market} strategy={strategy} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} score={score} />}
       {page === "Markets" && <MarketPage market={market} conditions={conditions} selectedAsset={selectedAsset} onAssetChange={onAssetChange} />}
-      {page === "Strategy" && <StrategyPage strategy={strategy} selectedAsset={selectedAsset} onPageChange={onPageChange} />}
-      {page === "Chart" && <ChartPage selectedAsset={selectedAsset} />}
+      {page === "Strategy" && <StrategyWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} onLogTrade={onLogTrade} onAskCoach={onAskCoach} />}
+      {page === "Chart" && <ChartWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onViewTrade={onViewTrade} />}
     </div>
   );
 }

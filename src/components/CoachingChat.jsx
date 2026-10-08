@@ -134,12 +134,14 @@ function CoachingChat({
   screenshotConsentAcknowledged = false,
   onRequireScreenshotConsent = () => {},
   onReviewDraft = () => {},
+  initialPrompt = "",
+  onInitialPromptConsumed = () => {},
 }) {
   const [strategies, setStrategies] = useState(strategyLibrary);
   const [conversations, setConversations] = useState([]);
   const [activeConversationId, setActiveConversationId] = useState("");
   const [messages, setMessages] = useState([]);
-  const [draft, setDraft] = useState("");
+  const [draft, setDraft] = useState(initialPrompt);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingConversation, setIsLoadingConversation] = useState(true);
   const [isHistoryLoading, setIsHistoryLoading] = useState(true);
@@ -166,6 +168,13 @@ function CoachingChat({
   const textareaRef = useRef(null);
   const threadRef = useRef(null);
   const retryOptionsRef = useRef(null);
+  const initialPromptConsumedRef = useRef("");
+
+  useEffect(() => {
+    if (!initialPrompt || initialPromptConsumedRef.current === initialPrompt) return;
+    initialPromptConsumedRef.current = initialPrompt;
+    onInitialPromptConsumed();
+  }, [initialPrompt, onInitialPromptConsumed]);
 
   function updateActiveTitle(title) {
     activeTitleRef.current = title;
