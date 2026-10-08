@@ -11,8 +11,10 @@ const {
   loadCoachConversations,
   renameCoachConversation,
   requestCoachReply,
+  requestCoachTitle,
   saveCoachAssistantReply,
   saveCoachUserMessage,
+  updateCoachUserMessage,
 } = vi.hoisted(() => ({
   addLatestBacktests: vi.fn(),
   createCoachConversation: vi.fn(),
@@ -22,8 +24,10 @@ const {
   loadCoachConversations: vi.fn(),
   renameCoachConversation: vi.fn(),
   requestCoachReply: vi.fn(),
+  requestCoachTitle: vi.fn(),
   saveCoachAssistantReply: vi.fn(),
   saveCoachUserMessage: vi.fn(),
+  updateCoachUserMessage: vi.fn(),
 }));
 
 vi.mock("../services/coachChat", () => ({
@@ -35,8 +39,10 @@ vi.mock("../services/coachChat", () => ({
   loadCoachConversations,
   renameCoachConversation,
   requestCoachReply,
+  requestCoachTitle,
   saveCoachAssistantReply,
   saveCoachUserMessage,
+  updateCoachUserMessage,
 }));
 
 function trades(count) {
@@ -77,8 +83,10 @@ describe("Coaching chat", () => {
     loadCoachConversations.mockReset().mockResolvedValue([]);
     renameCoachConversation.mockReset().mockImplementation(async (id, title) => ({ id, title, created_at: "2026-10-07T10:00:00Z", updated_at: "2026-10-07T10:00:00Z" }));
     requestCoachReply.mockReset();
+    requestCoachTitle.mockReset().mockRejectedValue(new Error("Title generation unavailable."));
     saveCoachAssistantReply.mockReset().mockResolvedValue({ id: "saved-assistant-id", role: "assistant" });
     saveCoachUserMessage.mockReset().mockResolvedValue({ id: "saved-user-id", role: "user" });
+    updateCoachUserMessage.mockReset().mockResolvedValue(undefined);
     window.confirm = vi.fn(() => true);
   });
 
@@ -101,8 +109,11 @@ describe("Coaching chat", () => {
     fireEvent.click(prompt);
 
     await waitFor(() => expect(requestCoachReply).toHaveBeenCalledTimes(1));
-    expect(requestCoachReply).toHaveBeenCalledWith("Which setups work best for me?", [], expect.objectContaining({ totalTrades: 10 }));
-    expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+    expect(requestCoachReply).toHaveBeenCalledWith("Which setups work best for me?", [], expect.objectContaining({ totalTrades: 10 }), expect.objectContaining({
+      signal: expect.any(AbortSignal),
+      onToken: expect.any(Function),
+    }));
+    expect(screen.getByRole("button", { name: "Stop generating" })).toBeInTheDocument();
 
     resolveReply("### Observed patterns\n\n- **Liquidity Sweep** appeared in the journal.");
     expect(await screen.findByRole("heading", { name: "Observed patterns" })).toBeInTheDocument();
@@ -123,6 +134,105 @@ describe("Coaching chat", () => {
     expect(await screen.findByText("Review your recorded sample.")).toBeInTheDocument();
     expect(requestCoachReply).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(saveCoachAssistantReply).toHaveBeenCalledWith(createCoachConversation.mock.calls[0][0], "Review your recorded sample."));
+  });
+
+  it("shows a readable per-user rate-limit error", async () => {
+    requestCoachReply.mockRejectedValue(new Error("Coach limit reached: 30 requests per hour. Please try again later."));
+    await renderReadyChat();
+    fireEvent.click(screen.getByRole("button", { name: "How much do my rule breaks cost me?" }));
+    expect(await screen.findByRole("alert"))
+      .toHaveTextContent("Coach limit reached: 30 requests per hour. Please try again later.");
+  });
+
+  it("sends the complete strategy comparison request from its chip", async () => {
+    requestCoachReply.mockResolvedValue("Strategy comparison details.");
+    await renderReadyChat();
+    fireEvent.click(screen.getByRole("button", { name: "Compare my strategies" }));
+    await waitFor(() => expect(requestCoachReply).toHaveBeenCalledWith(
+      "Compare my strategy versions using forward and backtest results.",
+      [],
+      expect.objectContaining({ totalTrades: 10 }),
+      expect.any(Object),
+    ));
+  });
+
+  it("streams a partial reply, lets the user stop, and persists it as partial", async () => {
+    requestCoachReply.mockImplementation((_message, _history, _context, { signal, onToken }) => new Promise((resolve) => {
+      onToken("A partial answer");
+      signal.addEventListener("abort", () => resolve({ reply: "A partial answer", stopped: true }), { once: true });
+    }));
+    await renderReadyChat();
+    fireEvent.click(screen.getByRole("button", { name: "Let's work on my strategy" }));
+    expect(await screen.findByText("A partial answer")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Stop generating" }));
+    expect(await screen.findByText("Partial reply · stopped")).toBeInTheDocument();
+    await waitFor(() => expect(saveCoachAssistantReply).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.stringContaining("Partial response — stopped by you."),
+    ));
+  });
+
+  it("renders report tables, offers report follow-ups, and copies the full report", async () => {
+    const report = "## Summary\nOne\n## Performance\nTwo\n## Strengths\nThree\n## Weaknesses\nFour\n\n| Group | P&L |\n| --- | ---: |\n| London | $10 |";
+    requestCoachReply.mockResolvedValue(report);
+    await renderReadyChat();
+    fireEvent.click(screen.getByRole("button", { name: "Show me a full trading report of last week" }));
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    expect(document.querySelector(".coach-markdown-table")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Copy report" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Compare to last month" }));
+    await waitFor(() => expect(requestCoachReply).toHaveBeenCalledWith(
+      "Compare to last month",
+      expect.any(Array),
+      expect.any(Object),
+      expect.any(Object),
+    ));
+  });
+
+  it("auto-titles a new conversation and preserves the provisional title on title failure", async () => {
+    requestCoachReply.mockResolvedValue("Your journal has mixed results.");
+    requestCoachTitle.mockResolvedValue("Weekly Results Review");
+    await renderReadyChat();
+    fireEvent.click(screen.getByRole("button", { name: "What's my biggest weakness?" }));
+    await waitFor(() => expect(requestCoachTitle).toHaveBeenCalledWith(
+      "What's my biggest weakness?",
+      "Your journal has mixed results.",
+      expect.objectContaining({ totalTrades: 10 }),
+    ));
+    await waitFor(() => expect(renameCoachConversation).toHaveBeenCalledWith(
+      expect.any(String),
+      "Weekly Results Review",
+    ));
+    expect(document.querySelector(".coach-active-title")).toHaveAttribute("title", "Weekly Results Review");
+
+    requestCoachTitle.mockRejectedValue(new Error("temporary title failure"));
+    fireEvent.click(screen.getByRole("button", { name: "+ New chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "Which setups work best for me?" }));
+    expect(await screen.findByText("Your journal has mixed results.")).toBeInTheDocument();
+    await waitFor(() => expect(createCoachConversation).toHaveBeenLastCalledWith(
+      expect.any(String),
+      "Which setups work best for me?",
+    ));
+    expect(document.querySelector(".coach-active-title")).toHaveAttribute("title", "Which setups work best for me?");
+  });
+
+  it("edits and resends the last user message in place", async () => {
+    const conversation = { id: "edit-conversation", title: "Original", created_at: "2026-10-07T10:00:00Z", updated_at: "2026-10-07T11:00:00Z" };
+    loadCoachConversations.mockResolvedValue([conversation]);
+    loadCoachConversation.mockResolvedValue([
+      { id: "edit-user", role: "user", content: "Original question" },
+      { id: "edit-assistant", role: "assistant", content: "Original answer" },
+    ]);
+    requestCoachReply.mockResolvedValue("Updated answer.");
+    await renderReadyChat();
+    fireEvent.click(screen.getByRole("button", { name: "Edit and resend" }));
+    const composer = screen.getByRole("textbox", { name: "Ask your coach anything about your trading" });
+    fireEvent.change(composer, { target: { value: "Revised question" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(await screen.findByText("Updated answer.")).toBeInTheDocument();
+    expect(updateCoachUserMessage).toHaveBeenCalledWith("edit-user", "Revised question");
+    expect(deleteCoachMessage).toHaveBeenCalledWith("edit-assistant");
+    expect(screen.getByText("Revised question")).toBeInTheDocument();
   });
 
   it("starts a clean thread from New chat", async () => {

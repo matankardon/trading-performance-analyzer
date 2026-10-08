@@ -10,11 +10,14 @@ import {
   loadCoachConversation,
   loadCoachConversations,
   renameCoachConversation,
+  requestCoachTitle,
   requestCoachReply,
   saveCoachAssistantReply,
   saveCoachUserMessage,
+  updateCoachUserMessage,
 } from "../services/coachChat";
 import { deriveConversationTitle, groupConversations, relativeConversationTime } from "../services/coachHistory";
+import { cleanCoachTitle, isFullReportReply, suggestedFollowUps } from "../services/coachChatPresentation";
 import "./CoachingChat.css";
 
 const prompts = [
@@ -23,6 +26,7 @@ const prompts = [
   "What's my biggest weakness?",
   "How much do my rule breaks cost me?",
   "Which setups work best for me?",
+  "Compare my strategies",
 ];
 
 function createId() {
@@ -37,7 +41,7 @@ function chatHistory(messages) {
   return messages.slice(-20).map(({ role, content }) => ({ role, content: content.slice(0, 2000) }));
 }
 
-function CoachMessage({ message, isLastAssistant, onCopy, onRegenerate, copied }) {
+function CoachMessage({ message, isLastAssistant, isLastUser, isLoading, onCopy, onEdit, onRegenerate, onFollowUp, copied }) {
   const isUser = message.role === "user";
   return (
     <article className={`coach-message ${isUser ? "coach-message-user" : "coach-message-assistant"}`}>
@@ -45,11 +49,34 @@ function CoachMessage({ message, isLastAssistant, onCopy, onRegenerate, copied }
       <div className="coach-message-content">
         {isUser
           ? <p>{message.content}</p>
-          : <div className="coach-markdown"><ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown></div>}
+          : (
+            <>
+              {message.partial && <span className="coach-partial-label">Partial reply · stopped</span>}
+              {message.content && <div className="coach-markdown"><ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  table: ({ children }) => <div className="coach-markdown-table"><table>{children}</table></div>,
+                }}
+              >{message.content}</ReactMarkdown></div>}
+              {!message.content && isLoading && <span className="coach-stream-placeholder">Thinking...</span>}
+            </>
+          )}
+        {isUser && isLastUser && !isLoading && (
+          <div className="coach-message-actions">
+            <button type="button" onClick={() => onEdit(message)}>Edit and resend</button>
+          </div>
+        )}
         {!isUser && (
           <div className="coach-message-actions">
-            <button type="button" onClick={() => onCopy(message)}>{copied ? "Copied" : "Copy"}</button>
-            {isLastAssistant && <button type="button" onClick={() => onRegenerate(message)}>Regenerate</button>}
+            {message.content && <button type="button" onClick={() => onCopy(message)}>{copied ? "Copied" : isFullReportReply(message.content) ? "Copy report" : "Copy"}</button>}
+            {isLastAssistant && !isLoading && <button type="button" onClick={() => onRegenerate(message)}>Regenerate</button>}
+          </div>
+        )}
+        {!isUser && !isLoading && message.content && (
+          <div className="coach-follow-up-chips" aria-label="Suggested follow-up questions">
+            {suggestedFollowUps(message.content).slice(0, 3).map((suggestion) => (
+              <button type="button" key={suggestion} onClick={() => onFollowUp(suggestion)}>{suggestion}</button>
+            ))}
           </div>
         )}
       </div>
@@ -70,6 +97,7 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
   const [historyOpen, setHistoryOpen] = useState(true);
   const [mobileHistoryOpen, setMobileHistoryOpen] = useState(false);
   const [activeTitle, setActiveTitle] = useState("New chat");
+  const [editingMessageId, setEditingMessageId] = useState("");
   const [editingConversationId, setEditingConversationId] = useState("");
   const [renameDraft, setRenameDraft] = useState("");
   const [actionMenuId, setActionMenuId] = useState("");
@@ -77,10 +105,17 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
   const [persistenceNotice, setPersistenceNotice] = useState("");
   const [copiedMessage, setCopiedMessage] = useState("");
   const requestInFlight = useRef(false);
+  const requestControllerRef = useRef(null);
+  const activeTitleRef = useRef("New chat");
   const conversationIdRef = useRef("");
   const conversationExistsRef = useRef(false);
   const textareaRef = useRef(null);
   const threadRef = useRef(null);
+
+  function updateActiveTitle(title) {
+    activeTitleRef.current = title;
+    setActiveTitle(title);
+  }
 
   useEffect(() => {
     let active = true;
@@ -115,7 +150,7 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
           conversationIdRef.current = latest.id;
           setActiveConversationId(latest.id);
           conversationExistsRef.current = true;
-          setActiveTitle(latest.title);
+          updateActiveTitle(latest.title);
           setMessages(loadedMessages.map((message) => ({ ...message, persisted: true })));
         } else {
           conversationIdRef.current = createId();
@@ -147,7 +182,9 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
   const context = useMemo(() => buildCoachContext(trades, strategies), [trades, strategies]);
   const hasEnoughTrades = context.totalTrades >= MIN_COACH_TRADES;
   const assistantIndexes = messages.flatMap((message, index) => message.role === "assistant" ? [index] : []);
+  const userIndexes = messages.flatMap((message, index) => message.role === "user" ? [index] : []);
   const lastAssistantIndex = assistantIndexes[assistantIndexes.length - 1];
+  const lastUserIndex = userIndexes[userIndexes.length - 1];
 
   function startNewChat() {
     if (requestInFlight.current) return;
@@ -155,7 +192,7 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     conversationIdRef.current = id;
     setActiveConversationId(id);
     conversationExistsRef.current = false;
-    setActiveTitle("New chat");
+    updateActiveTitle("New chat");
     setMessages([]);
     setDraft("");
     setChatError("");
@@ -176,7 +213,7 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
       conversationIdRef.current = conversation.id;
       setActiveConversationId(conversation.id);
       conversationExistsRef.current = true;
-      setActiveTitle(conversation.title);
+      updateActiveTitle(conversation.title);
       setMessages(loadedMessages.map((message) => ({ ...message, persisted: true })));
       setDraft("");
       setMobileHistoryOpen(false);
@@ -199,7 +236,7 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     try {
       const renamed = await renameCoachConversation(conversation.id, title);
       setConversations((current) => current.map((item) => item.id === renamed.id ? renamed : item));
-      if (conversation.id === conversationIdRef.current) setActiveTitle(renamed.title);
+      if (conversation.id === conversationIdRef.current) updateActiveTitle(renamed.title);
       setEditingConversationId("");
       setHistoryError("");
     } catch (error) {
@@ -220,23 +257,39 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     }
   }
 
-  async function completeReply(text, history, appendUserMessage, persistUserMessage = appendUserMessage, replaceMessage = null, existingUserId = "") {
+  async function completeReply(text, history, appendUserMessage, persistUserMessage = appendUserMessage, replaceMessage = null, existingUserId = "", editUserMessage = null) {
     if (requestInFlight.current || !hasEnoughTrades || isLoadingConversation) return;
     requestInFlight.current = true;
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
     setIsLoading(true);
     setChatError("");
     setPersistenceNotice("");
     const userDisplayId = appendUserMessage ? createId() : null;
     const assistantDisplayId = createId();
+    const isFirstReply = appendUserMessage
+      && !conversationExistsRef.current
+      && !history.some((message) => message.role === "assistant");
+    const provisionalTitle = deriveConversationTitle(text);
     if (appendUserMessage) setMessages((current) => [...current, { id: userDisplayId, role: "user", content: text, persisted: false }]);
+    if (editUserMessage) {
+      setMessages((current) => current.map((message) => message.id === editUserMessage.id
+        ? { ...message, content: text, persisted: false }
+        : message));
+    }
+    setMessages((current) => [...current, {
+      id: assistantDisplayId,
+      role: "assistant",
+      content: "",
+      streaming: true,
+    }]);
 
     try {
       if (!conversationExistsRef.current) {
-        const title = deriveConversationTitle(text);
-        const created = await createCoachConversation(conversationIdRef.current, title);
+        const created = await createCoachConversation(conversationIdRef.current, provisionalTitle);
         conversationExistsRef.current = true;
         setActiveConversationId(created.id);
-        setActiveTitle(created.title);
+        updateActiveTitle(created.title);
         setConversations((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       }
     } catch (error) {
@@ -244,7 +297,16 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     }
 
     try {
-      if (persistUserMessage && conversationExistsRef.current) {
+      if (editUserMessage?.persisted && conversationExistsRef.current) {
+        try {
+          await updateCoachUserMessage(editUserMessage.id, text);
+          setMessages((current) => current.map((message) => message.id === editUserMessage.id
+            ? { ...message, persisted: true }
+            : message));
+        } catch (error) {
+          setPersistenceNotice(`Your edited message could not be saved: ${error.message}`);
+        }
+      } else if (persistUserMessage && conversationExistsRef.current) {
         const savedUser = await saveCoachUserMessage(conversationIdRef.current, text);
         const targetUserId = userDisplayId || existingUserId;
         setMessages((current) => current.map((message) => message.id === targetUserId
@@ -256,30 +318,67 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     }
 
     try {
-      const reply = await requestCoachReply(text, history, context);
-      setMessages((current) => [...current, { id: assistantDisplayId, role: "assistant", content: reply }]);
-      if (conversationExistsRef.current) {
+      const result = await requestCoachReply(text, history, context, {
+        signal: controller.signal,
+        onToken: (reply) => setMessages((current) => current.map((message) => message.id === assistantDisplayId
+          ? { ...message, content: reply, streaming: true }
+          : message)),
+      });
+      const reply = typeof result === "string" ? result : result.reply;
+      const stopped = typeof result === "object" && result.stopped === true;
+      const replyContent = stopped && reply
+        ? `${reply}\n\n> _Partial response — stopped by you._`
+        : reply;
+      if (replyContent) {
+        setMessages((current) => current.map((message) => message.id === assistantDisplayId
+          ? { ...message, content: replyContent, partial: stopped, streaming: false }
+          : message));
+      } else {
+        setMessages((current) => current.filter((message) => message.id !== assistantDisplayId));
+      }
+      if (conversationExistsRef.current && replyContent) {
         try {
-          const savedAssistant = await saveCoachAssistantReply(conversationIdRef.current, reply);
+          const savedAssistant = await saveCoachAssistantReply(conversationIdRef.current, replyContent);
           setMessages((current) => current.map((message) => message.id === assistantDisplayId
-            ? { ...message, id: savedAssistant.id }
+            ? { ...message, id: savedAssistant.id, persisted: true }
             : message));
+          if (replaceMessage?.id) {
+            await deleteCoachMessage(replaceMessage.id);
+            setMessages((current) => current.filter((message) => message.id !== replaceMessage.id));
+          }
           const updated = await refreshConversations();
           const activeConversation = updated.find((item) => item.id === conversationIdRef.current);
-          if (activeConversation) setActiveTitle(activeConversation.title);
-        if (replaceMessage?.id) {
-          await deleteCoachMessage(replaceMessage.id);
-          setMessages((current) => current.filter((message) => message.id !== replaceMessage.id));
-        }
+          if (activeConversation) updateActiveTitle(activeConversation.title);
         } catch (error) {
           setPersistenceNotice(`Reply is available, but could not be saved: ${error.message}`);
         }
-      } else {
+      } else if (replyContent) {
         setPersistenceNotice("Reply is available, but conversation storage is unavailable.");
       }
+      if (isFirstReply && !stopped && conversationExistsRef.current && replyContent) {
+        try {
+          const titleSuggestion = cleanCoachTitle(await requestCoachTitle(text, replyContent, context));
+          if (titleSuggestion && conversationIdRef.current === activeConversationId
+            && activeTitleRef.current === provisionalTitle) {
+            const renamed = await renameCoachConversation(conversationIdRef.current, titleSuggestion);
+            updateActiveTitle(renamed.title);
+            setConversations((current) => current.map((conversation) => (
+              conversation.id === renamed.id ? renamed : conversation
+            )));
+          }
+        } catch {
+          // Keep the existing truncated title when title generation is unavailable.
+        }
+      }
+      setEditingMessageId("");
     } catch (error) {
       setChatError(error instanceof Error ? error.message : "Coach request failed. Please try again.");
+      setMessages((current) => current.flatMap((message) => {
+        if (message.id !== assistantDisplayId) return [message];
+        return message.content ? [{ ...message, streaming: false }] : [];
+      }));
     } finally {
+      requestControllerRef.current = null;
       requestInFlight.current = false;
       setIsLoading(false);
     }
@@ -288,6 +387,18 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
   function sendMessage(value = draft) {
     const text = value.trim();
     if (!text || text.length > 2000 || requestInFlight.current || !hasEnoughTrades) return;
+    if (editingMessageId) {
+      const userIndex = messages.findIndex((message) => message.id === editingMessageId);
+      if (userIndex < 0) return;
+      const editedMessage = messages[userIndex];
+      const response = messages.slice(userIndex + 1).find((message) => message.role === "assistant");
+      const history = chatHistory(messages.slice(0, userIndex));
+      setDraft("");
+      setEditingMessageId("");
+      if (textareaRef.current) textareaRef.current.style.height = "auto";
+      completeReply(text, history, false, false, response, editedMessage.id, editedMessage);
+      return;
+    }
     const history = chatHistory(messages);
     setDraft("");
     if (textareaRef.current) textareaRef.current.style.height = "auto";
@@ -310,6 +421,22 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
     const userMessage = messages[userIndex];
     const history = chatHistory(messages.slice(0, userIndex));
     completeReply(userMessage.content, history, false, false, message);
+  }
+
+  function editLastUserMessage(message) {
+    setDraft(message.content);
+    setEditingMessageId(message.id);
+    requestAnimationFrame(() => {
+      textareaRef.current?.focus();
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 180)}px`;
+      }
+    });
+  }
+
+  function stopGeneration() {
+    requestControllerRef.current?.abort();
   }
 
   async function copyMessage(message) {
@@ -428,20 +555,33 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
                   key={message.id}
                   message={message}
                   isLastAssistant={index === lastAssistantIndex}
+                  isLastUser={index === lastUserIndex}
+                  isLoading={isLoading}
                   onCopy={copyMessage}
+                  onEdit={editLastUserMessage}
                   onRegenerate={regenerateMessage}
+                  onFollowUp={(prompt) => sendMessage(prompt)}
                   copied={copiedMessage === message.id}
                 />
               ))}
-              {isLoading && <div className="coach-typing" role="status"><span className="coach-avatar" aria-hidden="true">C</span><span>Thinking...</span></div>}
               {chatError && <div className="coach-chat-error" role="alert"><span>{chatError}</span><button type="button" onClick={retryLastMessage} disabled={isLoading}>Retry</button></div>}
             </section>
 
             <footer className="coach-composer-area">
               <div className={`coach-prompt-chips${messages.length ? " compact" : ""}`} aria-label="Example prompts">
-                {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => sendMessage(prompt)} disabled={isLoading || isLoadingConversation}>{prompt}</button>)}
+                {prompts.map((prompt) => <button key={prompt} type="button" onClick={() => sendMessage(
+                  prompt === "Compare my strategies"
+                    ? "Compare my strategy versions using forward and backtest results."
+                    : prompt,
+                )} disabled={isLoading || isLoadingConversation}>{prompt}</button>)}
               </div>
               {persistenceNotice && <p className="coach-persistence-notice" role="status">{persistenceNotice}</p>}
+              {editingMessageId && (
+                <div className="coach-editing-notice">
+                  <span>Editing your last message</span>
+                  <button type="button" onClick={() => { setEditingMessageId(""); setDraft(""); }}>Cancel</button>
+                </div>
+              )}
               <div className="coach-composer">
                 <textarea
                   ref={textareaRef}
@@ -454,7 +594,15 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
                   aria-label="Ask your coach anything about your trading"
                   disabled={isLoading || isLoadingConversation}
                 />
-                <button type="button" onClick={() => sendMessage()} disabled={isLoading || isLoadingConversation || !draft.trim()} aria-label="Send message">Send</button>
+                {isLoading && messages.some((message) => message.streaming) ? (
+                  <button type="button" onClick={stopGeneration} aria-label="Stop generating">Stop</button>
+                ) : isLoading ? (
+                  <button type="button" disabled>Working...</button>
+                ) : (
+                  <button type="button" onClick={() => sendMessage()} disabled={isLoadingConversation || !draft.trim()} aria-label="Send message">
+                    {editingMessageId ? "Resend" : "Send"}
+                  </button>
+                )}
                 <small>{draft.length}/2000</small>
               </div>
               <p className="coach-disclaimer">Journal-based patterns, not financial advice.</p>

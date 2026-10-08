@@ -1,4 +1,5 @@
 import { supabase } from "../supabaseClient";
+import { readOpenAiSseStream } from "./coachChatStream";
 
 function readableFunctionError(error) {
   return error?.detail || error?.error || error?.message || "Coach request failed. Please try again.";
@@ -121,7 +122,7 @@ export async function deleteCoachMessage(messageId) {
   if (error) throw new Error(error.message || "Could not replace the saved reply.");
 }
 
-export async function requestCoachReply(message, history, context) {
+async function requestCoachReplyLegacy(message, history, context) {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw new Error(sessionError.message);
   const accessToken = sessionData.session?.access_token;
@@ -144,4 +145,112 @@ export async function requestCoachReply(message, history, context) {
     throw new Error(data?.error || "Coach returned an incomplete reply.");
   }
   return data.reply;
+}
+
+class CoachHttpError extends Error {
+  constructor(message, status) {
+    super(message);
+    this.status = status;
+  }
+}
+
+export async function requestCoachReply(message, history, context, { signal, onToken = () => {} } = {}) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new Error(sessionError.message);
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) throw new Error("A valid Supabase access token is required. Please sign in again.");
+
+  let shouldFallback;
+  try {
+    const url = import.meta.env.VITE_SUPABASE_URL;
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    if (!url || !anonKey) throw new Error("Coach streaming is not configured.");
+    const response = await fetch(`${url.replace(/\/$/, "")}/functions/v1/coach-chat`, {
+      method: "POST",
+      signal,
+      headers: {
+        Authorization: "Bearer " + accessToken,
+        apikey: anonKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ mode: "stream", message, history: history.slice(-20), context }),
+    });
+
+    if (!response.ok) {
+      let data;
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+      const messageText = readableFunctionError(data);
+      if (response.status < 500) throw new CoachHttpError(messageText, response.status);
+      shouldFallback = true;
+    } else if (response.headers.get("Content-Type")?.includes("text/event-stream")) {
+      try {
+        return await readOpenAiSseStream(response.body, onToken, signal);
+      } catch {
+        if (signal?.aborted) return { reply: "", stopped: true };
+        shouldFallback = true;
+      }
+    } else {
+      const data = await response.json();
+      if (data?.ok === true && typeof data.reply === "string") {
+        onToken(data.reply);
+        return { reply: data.reply, stopped: false };
+      }
+      if (response.status === 429) throw new CoachHttpError(data?.error || "Coach rate limit reached. Try again later.", 429);
+      shouldFallback = true;
+    }
+  } catch (error) {
+    if (signal?.aborted) return { reply: "", stopped: true };
+    if (error instanceof CoachHttpError && error.status < 500) throw error;
+    shouldFallback = true;
+  }
+
+  if (shouldFallback) {
+    onToken("");
+    const reply = await requestCoachReplyLegacy(message, history, context);
+    onToken(reply);
+    return { reply, stopped: false, fallback: true };
+  }
+  throw new Error("Coach request failed. Please try again.");
+}
+
+export async function requestCoachTitle(message, reply, context) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new Error(sessionError.message);
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) throw new Error("A valid Supabase access token is required. Please sign in again.");
+  const { data, error } = await supabase.functions.invoke("coach-chat", {
+    body: {
+      mode: "title",
+      message: message.slice(0, 2000),
+      history: [{ role: "assistant", content: reply.slice(0, 2000) }],
+      context,
+    },
+    headers: { Authorization: "Bearer " + accessToken },
+  });
+  if (error) {
+    let responseBody;
+    try {
+      responseBody = error.context?.clone ? await error.context.clone().json() : error.context;
+    } catch {
+      responseBody = null;
+    }
+    throw new Error(readableFunctionError(responseBody) || readableFunctionError(error));
+  }
+  if (data?.ok !== true || typeof data.title !== "string" || !data.title.trim()) {
+    throw new Error(data?.error || "Coach returned no conversation title.");
+  }
+  return data.title;
+}
+
+export async function updateCoachUserMessage(messageId, content) {
+  const { error } = await supabase
+    .from("coach_messages")
+    .update({ content })
+    .eq("id", messageId)
+    .eq("role", "user");
+  if (error) throw new Error(error.message || "Could not update your message.");
 }

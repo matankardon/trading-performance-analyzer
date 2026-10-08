@@ -508,11 +508,18 @@
 }
 
 .coach-markdown table {
-  display: block;
-  width: 100%;
-  overflow-x: auto;
+  width: max-content;
+  min-width: 100%;
   border-collapse: collapse;
   font-size: 10px;
+}
+
+.coach-markdown-table {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  scrollbar-width: thin;
 }
 
 .coach-markdown th,
@@ -549,6 +556,52 @@
 .coach-message-actions button {
   padding: 5px 7px;
   color: #FFFFFF;
+  font-size: 9px;
+}
+
+.coach-follow-up-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.coach-follow-up-chips button,
+.coach-editing-notice button {
+  border: 1px solid rgba(212, 175, 55, 0.34);
+  border-radius: 999px;
+  padding: 5px 8px;
+  background: rgba(212, 175, 55, 0.04);
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 8px;
+  cursor: pointer;
+}
+
+.coach-follow-up-chips button:hover,
+.coach-editing-notice button:hover {
+  border-color: var(--color-gold);
+  color: var(--color-gold);
+}
+
+.coach-stream-placeholder,
+.coach-partial-label {
+  display: inline-block;
+  margin: 4px 0;
+  color: var(--color-gold);
+  font-size: 9px;
+}
+
+.coach-partial-label {
+  display: block;
+  opacity: 0.75;
+}
+
+.coach-editing-notice {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  color: var(--color-gold);
   font-size: 9px;
 }
 

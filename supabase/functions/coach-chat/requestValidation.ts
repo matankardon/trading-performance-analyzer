@@ -109,25 +109,37 @@ function validWindow(value: unknown, expectedLabel: string, today: string): bool
 }
 
 function validStrategy(value: unknown, totalTrades: number): boolean {
-  if (!exactKeys(value, ["strategy", "version", "declaredConditions", "declaredIndicators", "forwardStats", "latestBacktest"])) return false;
+  if (!exactKeys(value, ["strategy", "version", "declaredConditions", "declaredIndicators", "conditionEvidence", "forwardStats", "latestBacktest", "forwardVsBacktest"])) return false;
   if (!safeString(value.strategy) || !Number.isInteger(value.version) || (value.version as number) < 1) return false;
   if (!Array.isArray(value.declaredConditions) || !value.declaredConditions.every((item) => conditionLabels.includes(item))) return false;
   if (!Array.isArray(value.declaredIndicators) || !value.declaredIndicators.every((item) => indicatorNames.has(item))) return false;
+  if (!Array.isArray(value.conditionEvidence) || value.conditionEvidence.length > conditionLabels.length + indicatorNames.size) return false;
+  if (!value.conditionEvidence.every((item) => {
+    if (!exactKeys(item, ["name", "kind", "present", "absent"])
+      || !safeString(item.name)
+      || !["setup", "indicator"].includes(item.kind)
+      || (item.kind === "setup" ? !conditionLabels.includes(item.name) : !indicatorNames.has(item.name))) return false;
+    return [item.present, item.absent].every((group) => exactKeys(group, ["n", "expectancy"])
+      && Number.isInteger(group.n) && (group.n as number) >= 0 && (group.n as number) <= totalTrades
+      && finiteOrNull(group.expectancy) && (group.n === 0 ? group.expectancy === null : typeof group.expectancy === "number"));
+  })) return false;
   const stats = value.forwardStats;
   if (!exactKeys(stats, ["tradeCount", "wins", "losses", "winRate", "netPnl", "expectancy", "profitFactor", "averageRiskReward", "maxDrawdownUsd"])) return false;
   if (![stats.tradeCount, stats.wins, stats.losses].every((count) => Number.isInteger(count) && count >= 0 && count <= totalTrades)) return false;
   if (![stats.winRate, stats.netPnl, stats.expectancy, stats.maxDrawdownUsd].every((number) => typeof number === "number" && Number.isFinite(number))) return false;
   if (!(stats.profitFactor === "n/a" || (typeof stats.profitFactor === "number" && Number.isFinite(stats.profitFactor)))) return false;
   if (!finiteOrNull(stats.averageRiskReward)) return false;
-  if (value.latestBacktest === null) return true;
+  if (value.latestBacktest === null) return value.forwardVsBacktest === null;
   const backtest = value.latestBacktest;
   if (!exactKeys(backtest, ["asset", "timeframe", "startDate", "endDate", "createdAt", "metrics"])) return false;
   if (![backtest.asset, backtest.timeframe, backtest.startDate, backtest.endDate, backtest.createdAt].every((text) => safeString(text))) return false;
   const metrics = backtest.metrics;
   if (!exactKeys(metrics, ["tradeCount", "winRate", "netPnl", "profitFactor", "expectancy", "maxDrawdown", "averageRiskReward"])) return false;
-  return finiteOrNull(metrics.tradeCount) && finiteOrNull(metrics.winRate) && finiteOrNull(metrics.netPnl)
+  const validMetrics = finiteOrNull(metrics.tradeCount) && finiteOrNull(metrics.winRate) && finiteOrNull(metrics.netPnl)
     && (metrics.profitFactor === "n/a" || finiteOrNull(metrics.profitFactor))
     && finiteOrNull(metrics.expectancy) && finiteOrNull(metrics.maxDrawdown) && finiteOrNull(metrics.averageRiskReward);
+  if (!validMetrics || !exactKeys(value.forwardVsBacktest, ["winRate", "netPnl", "profitFactor", "expectancy", "maxDrawdown", "averageRiskReward"])) return false;
+  return Object.values(value.forwardVsBacktest).every(finiteOrNull);
 }
 
 function validRecentTrade(value): boolean {
@@ -153,8 +165,11 @@ export function isValidCoachContext(value: unknown): boolean {
   return Array.isArray(value.recentTrades) && value.recentTrades.length <= 50 && value.recentTrades.every(validRecentTrade);
 }
 
-export function isValidCoachChatRequest(value: unknown): value is { message: string; history: Array<{ role: string; content: string }>; context: Record<string, unknown> } {
-  return exactKeys(value, ["message", "history", "context"])
+export function isValidCoachChatRequest(value: unknown): value is { mode?: string; message: string; history: Array<{ role: string; content: string }>; context: Record<string, unknown> } {
+  if (!isRecord(value)) return false;
+  const hasMode = Object.hasOwn(value, "mode");
+  return exactKeys(value, hasMode ? ["mode", "message", "history", "context"] : ["message", "history", "context"])
+    && (!hasMode || ["stream", "complete", "title"].includes(value.mode as string))
     && typeof value.message === "string" && value.message.trim().length > 0 && value.message.length <= 2000
     && Array.isArray(value.history) && value.history.length <= 20
     && value.history.every((entry) => exactKeys(entry, ["role", "content"])

@@ -27,6 +27,15 @@ context pack. The function validates the caller's JWT with Supabase Auth and
 rejects unknown fields or raw trade records. Context excludes trade notes,
 screenshots, UUIDs, and account identifiers.
 
+Requests may use `mode: "stream"` for OpenAI-compatible SSE deltas,
+`mode: "complete"` for a non-streaming reply, or `mode: "title"` for a
+short conversation title. Streaming failures fall back to a regular completion.
+Each authenticated user is limited to 30 requests per hour by the
+`consume_coach_request` RPC. The rate-limit table is not readable or writable by
+client roles; only the Edge Function's service-role client can invoke the RPC.
+Apply `supabase/migrations/20261008000000_coach_request_rate_limit.sql` before
+deploying the updated function.
+
 Required Supabase project secrets/configuration:
 
 - `OPENAI_API_KEY`: server-side OpenAI API key, shared with `screenshot-vision`.
@@ -35,6 +44,9 @@ Required Supabase project secrets/configuration:
   `gpt-4o-mini`.
 - `SUPABASE_URL` and `SUPABASE_ANON_KEY`: used to validate each caller's
   Supabase access token.
+- `SUPABASE_SERVICE_ROLE_KEY`: used only by the Edge Function to atomically
+  consume the per-user hourly request allowance. Never expose this key to the
+  client.
 
 The function deploy workflow triggers for changes under `supabase/functions/**`.
 Deploy `coach-chat` by pushing its function files to `main`.

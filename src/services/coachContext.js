@@ -1,6 +1,6 @@
 import { INDICATORS, SETUP_CONDITIONS } from "../constants/strategyOptions";
 import { analyzeCoaching, toCoachSummaryAnalysis } from "./coachingAnalysis";
-import { computeForwardStats } from "./forwardTestStats";
+import { computeForwardStats, computeTradeStats } from "./forwardTestStats";
 
 export const MIN_COACH_TRADES = 10;
 
@@ -122,6 +122,34 @@ function latestBacktest(version) {
   };
 }
 
+function finiteDelta(forwardValue, backtestValue) {
+  return Number.isFinite(forwardValue) && Number.isFinite(backtestValue)
+    ? forwardValue - backtestValue
+    : null;
+}
+
+function conditionEvidence(trades, condition) {
+  const matches = (trade) => condition.kind === "indicator"
+    ? Array.isArray(trade.indicators) && trade.indicators.includes(condition.name)
+    : trade[condition.key] === true;
+  const present = trades.filter(matches);
+  const absent = trades.filter((trade) => !matches(trade));
+  const presentStats = computeTradeStats(present);
+  const absentStats = computeTradeStats(absent);
+  return {
+    name: condition.label,
+    kind: condition.kind,
+    present: {
+      n: presentStats.tradeCount,
+      expectancy: presentStats.tradeCount ? presentStats.expectancy : null,
+    },
+    absent: {
+      n: absentStats.tradeCount,
+      expectancy: absentStats.tradeCount ? absentStats.expectancy : null,
+    },
+  };
+}
+
 function versionContext(entry, trades) {
   const version = entry.version;
   const versionTrades = trades.filter((trade) => (
@@ -134,12 +162,34 @@ function versionContext(entry, trades) {
   const enabledIndicators = INDICATORS
     .filter(({ key }) => version.conditions?.[key] === true)
     .map(({ name }) => name);
+  const declaredEvidence = [
+    ...SETUP_CONDITIONS
+      .filter(({ key }) => version.conditions?.[key] === true)
+      .map(({ key, label }) => ({ key, label, kind: "setup" })),
+    ...INDICATORS
+      .filter(({ key }) => version.conditions?.[key] === true)
+      .map(({ name, label }) => ({ name, label, key: name, kind: "indicator" })),
+  ];
+  const backtest = latestBacktest(version);
+  const backtestMetrics = backtest?.metrics;
+  const forwardVsBacktest = backtestMetrics ? {
+    winRate: finiteDelta(stats.winRate, backtestMetrics.winRate),
+    netPnl: finiteDelta(stats.netPnl, backtestMetrics.netPnl),
+    profitFactor: finiteDelta(
+      typeof stats.profitFactor === "number" ? stats.profitFactor : null,
+      typeof backtestMetrics.profitFactor === "number" ? backtestMetrics.profitFactor : null,
+    ),
+    expectancy: finiteDelta(stats.expectancy, backtestMetrics.expectancy),
+    maxDrawdown: finiteDelta(stats.maxDrawdownUsd, backtestMetrics.maxDrawdown),
+    averageRiskReward: finiteDelta(stats.averageRiskReward, backtestMetrics.averageRiskReward),
+  } : null;
 
   return {
     strategy: entry.strategyName,
     version: entry.versionNumber,
     declaredConditions: enabledConditions,
     declaredIndicators: enabledIndicators,
+    conditionEvidence: declaredEvidence.map((condition) => conditionEvidence(versionTrades, condition)),
     forwardStats: {
       tradeCount: stats.tradeCount,
       wins: stats.wins,
@@ -151,7 +201,8 @@ function versionContext(entry, trades) {
       averageRiskReward: stats.averageRiskReward,
       maxDrawdownUsd: stats.maxDrawdownUsd,
     },
-    latestBacktest: latestBacktest(version),
+    latestBacktest: backtest,
+    forwardVsBacktest,
   };
 }
 

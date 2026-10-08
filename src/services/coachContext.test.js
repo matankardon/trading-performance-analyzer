@@ -69,8 +69,20 @@ describe("buildCoachContext", () => {
       version: 2,
       declaredConditions: ["Liquidity Sweep"],
       declaredIndicators: ["SMA"],
+      conditionEvidence: [
+        { name: "Liquidity Sweep", kind: "setup", present: { n: 5, expectancy: 31 }, absent: { n: 0, expectancy: null } },
+        { name: "SMA", kind: "indicator", present: { n: 5, expectancy: 31 }, absent: { n: 0, expectancy: null } },
+      ],
       forwardStats: { tradeCount: 5, netPnl: 155 },
       latestBacktest: { asset: "AAPL", metrics: { tradeCount: 8, netPnl: 100 } },
+      forwardVsBacktest: {
+        winRate: 30,
+        netPnl: 55,
+        profitFactor: 15,
+        expectancy: 18.5,
+        maxDrawdown: null,
+        averageRiskReward: null,
+      },
     });
   });
 
