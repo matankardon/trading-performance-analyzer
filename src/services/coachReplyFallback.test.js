@@ -12,7 +12,26 @@ describe("requestWithStreamFallback", () => {
     });
     expect(result).toMatchObject({ reply: "Recovered reply", fallback: true });
     expect(completeRequest).toHaveBeenCalledOnce();
-    expect(onFallback).toHaveBeenCalledOnce();
+    expect(onFallback).toHaveBeenCalledWith({
+      reason: "no tokens parsed",
+      firstRawChunk: "",
+    });
+  });
+
+  it("reports parser errors with a bounded diagnostic context", async () => {
+    const completeRequest = vi.fn().mockResolvedValue({ reply: "Recovered" });
+    const onFallback = vi.fn();
+    const error = new Error("invalid event");
+    error.rawChunk = "data: not-json";
+    await requestWithStreamFallback({
+      streamRequest: async () => { throw error; },
+      completeRequest,
+      onFallback,
+    });
+    expect(onFallback).toHaveBeenCalledWith({
+      reason: "parse error: invalid event",
+      firstRawChunk: "data: not-json",
+    });
   });
 
   it("rejects a whitespace-only complete-mode result", async () => {

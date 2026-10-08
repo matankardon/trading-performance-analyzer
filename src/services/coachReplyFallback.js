@@ -5,16 +5,25 @@ function replyText(result) {
 }
 
 export async function requestWithStreamFallback({ streamRequest, completeRequest, onFallback = () => {} }) {
+  let streamFailure;
   try {
     const streamed = await streamRequest();
     if (streamed?.stopped) return streamed;
     const reply = replyText(streamed);
-    if (typeof reply === "string" && reply.trim()) return { ...streamed, reply };
-  } catch {
-    // A failed stream gets one non-streaming attempt.
+    const tokenCount = streamed?.tokenCount ?? (typeof reply === "string" && reply.length ? 1 : 0);
+    if (tokenCount > 0 && typeof reply === "string" && reply.trim()) return { ...streamed, reply };
+    streamFailure = {
+      reason: "no tokens parsed",
+      firstRawChunk: streamed?.firstRawChunk || "",
+    };
+  } catch (error) {
+    streamFailure = {
+      reason: `parse error: ${error instanceof Error ? error.message : String(error)}`,
+      firstRawChunk: error?.rawChunk || "",
+    };
   }
 
-  onFallback();
+  onFallback(streamFailure || { reason: "no tokens parsed", firstRawChunk: "" });
   const completed = await completeRequest();
   const reply = replyText(completed);
   if (typeof reply !== "string" || !reply.trim()) {

@@ -196,10 +196,12 @@ export async function requestCoachReply(message, history, context, { signal, onT
       return await requestWithStreamFallback({
         streamRequest: () => readOpenAiSseStream(response.body, onToken, signal),
         completeRequest: () => requestCoachReplyLegacy(message, history, context),
-        onFallback: () => {
+        onFallback: ({ reason, firstRawChunk }) => {
           console.error("Coach streaming fallback", {
             status: responseStatus,
             contentType: responseContentType,
+            reason,
+            firstRawChunk: firstRawChunk.slice(0, 120),
           });
           onToken("");
         },
@@ -226,6 +228,10 @@ export async function requestCoachReply(message, history, context, { signal, onT
     console.error("Coach streaming fallback", {
       status: responseStatus,
       contentType: responseContentType,
+      reason: responseStatus >= 500
+        ? `HTTP ${responseStatus}`
+        : "unexpected streaming response",
+      firstRawChunk: "",
     });
     onToken("");
     const reply = await requestCoachReplyLegacy(message, history, context);

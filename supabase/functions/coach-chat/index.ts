@@ -1,5 +1,6 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
+import { buildOpenAiRequestBody } from "./openAiRequest.ts";
 import { isValidCoachChatRequest } from "./requestValidation.ts";
 
 const MAX_REQUEST_BYTES = 150 * 1024;
@@ -103,6 +104,7 @@ async function requestCompletion(
   model: string,
   maxTokens: number,
   signal: AbortSignal,
+  stream = false,
 ) {
   return fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -111,12 +113,7 @@ async function requestCompletion(
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      model,
-      max_tokens: maxTokens,
-      temperature: 0.3,
-      messages,
-    }),
+    body: JSON.stringify(buildOpenAiRequestBody(model, maxTokens, 0.3, messages, stream)),
   });
 }
 
@@ -150,7 +147,14 @@ async function requestOpenAi(
   const signal = AbortSignal.any([controller.signal, requestSignal]);
 
   try {
-    const response = await requestCompletion(messages, apiKey, model, mode === "title" ? 20 : 1200, signal);
+    const response = await requestCompletion(
+      messages,
+      apiKey,
+      model,
+      mode === "title" ? 20 : 1200,
+      signal,
+      mode === "stream",
+    );
     if (mode === "stream" && response.ok && response.body) {
       return { stream: response.body };
     }
