@@ -19,6 +19,7 @@ const InvestingWorkspace = lazy(() => import("./components/InvestingWorkspace"))
 const DayTradingDashboard = lazy(() => import("./components/DayTradingDashboard"));
 const ScreenshotTradeWorkflow = lazy(() => import("./components/ScreenshotTradeWorkflow"));
 const StrategyLab = lazy(() => import("./components/StrategyLab"));
+const JournalCalendar = lazy(() => import("./components/JournalCalendar"));
 
 import "./App.css";
 
@@ -43,6 +44,10 @@ function hasAnnotation(text) {
 function annotationHint(text) {
   const match = numericMatch(text);
   return match ? text.trim().slice(match[0].length).trim() : "";
+}
+
+function localDateString(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
 function LazyViewFallback() {
@@ -401,7 +406,7 @@ function App() {
     }));
   }
 
-  function openAddTrade() {
+  function openAddTrade(date) {
     setEditingTrade(null);
     setScreenshotFile(null);
     setScreenshotAiExtraction(null);
@@ -409,9 +414,9 @@ function App() {
 
     setForm({
       ...emptyTrade,
-      date: new Date()
-        .toISOString()
-        .split("T")[0],
+      date: /^\d{4}-\d{2}-\d{2}$/.test(date || "")
+        ? date
+        : localDateString(new Date()),
     });
 
     setShowTradeForm(true);
@@ -1310,191 +1315,15 @@ function App() {
           </div>
 
           {loadingTrades ? (
-            <div className="journal-empty">
-              <h3>
-                Loading your trades...
-              </h3>
-            </div>
-          ) : filteredTrades.length ===
-            0 ? (
-            <div className="journal-empty">
-              <div className="empty-icon">
-                {trades.length ===
-                0
-                  ? "+"
-                  : "⌕"}
-              </div>
-
-              <h3>
-                {trades.length ===
-                0
-                  ? "No trades recorded"
-                  : "No matching trades"}
-              </h3>
-
-              <p>
-                {trades.length ===
-                0
-                  ? "Start building your trading history by adding your first trade."
-                  : "Try changing your search or filters."}
-              </p>
-
-              {trades.length ===
-                0 && (
-                <button
-                  className="secondary-btn"
-                  onClick={
-                    openTradeEntryChoice
-                  }
-                >
-                  Add Trade
-                </button>
-              )}
-            </div>
+            <div className="journal-empty"><h3>Loading your trades...</h3></div>
           ) : (
-            <div className="table-wrapper">
-              <table className="trade-table">
-                <thead>
-                  <tr>
-                    <th>
-                      Date
-                    </th>
-
-                    <th>
-                      Asset
-                    </th>
-
-                    <th>
-                      Direction
-                    </th>
-
-                    <th>
-                      Session
-                    </th>
-
-                    <th>
-                      Strategy
-                    </th>
-
-                    <th>
-                      Quality
-                    </th>
-
-                    <th>
-                      P&amp;L
-                    </th>
-
-                    <th></th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {filteredTrades.map(
-                    (trade) => {
-                      const pnl =
-                        Number(
-                          trade.pnl ||
-                            0
-                        );
-
-                      return (
-                        <tr
-                          key={
-                            trade.id
-                          }
-                        >
-                          <td>
-                            {trade.date ||
-                              "-"}
-                          </td>
-
-                          <td>
-                            <strong>
-                              {trade.asset ||
-                                "-"}
-                            </strong>
-                          </td>
-
-                          <td>
-                            <span
-                              className={`direction ${
-                                trade.direction ===
-                                "Long"
-                                  ? "long"
-                                  : "short"
-                              }`}
-                            >
-                              {
-                                trade.direction
-                              }
-                            </span>
-                          </td>
-
-                          <td>
-                            {trade.session ||
-                              "-"}
-                          </td>
-
-                          <td>
-                            {trade.strategy ||
-                              "-"}
-                          </td>
-
-                          <td>
-                            {trade.tradeQuality ||
-                              "-"}
-                          </td>
-
-                          <td
-                            className={
-                              pnl >= 0
-                                ? "pnl-positive"
-                                : "pnl-negative"
-                            }
-                          >
-                            {pnl >= 0
-                              ? "+"
-                              : "-"}
-                            $
-                            {Math.abs(
-                              pnl
-                            ).toFixed(
-                              2
-                            )}
-                          </td>
-
-                          <td>
-                            <div className="trade-actions">
-                              <button
-                                className="table-action-btn"
-                                onClick={() =>
-                                  setSelectedTrade(
-                                    trade
-                                  )
-                                }
-                              >
-                                View
-                              </button>
-
-                              <button
-                                className="table-action-btn"
-                                onClick={() =>
-                                  openEditTrade(
-                                    trade
-                                  )
-                                }
-                              >
-                                Edit
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    }
-                  )}
-                </tbody>
-              </table>
-            </div>
+            <JournalCalendar
+              trades={filteredTrades}
+              onAddTrade={openAddTrade}
+              onViewTrade={setSelectedTrade}
+              onEditTrade={openEditTrade}
+              onDeleteTrade={deleteTrade}
+            />
           )}
         </div>
       </>
