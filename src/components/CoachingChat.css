@@ -743,6 +743,221 @@
   opacity: 0.55;
 }
 
+.coach-attach-screenshot {
+  align-self: flex-start;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 7px;
+  margin-top: 7px;
+  padding: 7px 9px;
+  background: transparent;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.coach-attach-screenshot:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.coach-screenshot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 7px;
+}
+
+.coach-screenshot-chip {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  border-radius: 999px;
+  padding: 4px 7px;
+  color: #FFFFFF;
+  font-size: 9px;
+}
+
+.coach-screenshot-chip button,
+.coach-screenshot-picker header button {
+  border: 0;
+  padding: 1px 3px;
+  background: transparent;
+  color: #FFFFFF;
+  font: inherit;
+  cursor: pointer;
+}
+
+.coach-draft-card {
+  width: min(100%, 460px);
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.4);
+  border-radius: 8px;
+  background: rgba(212, 175, 55, 0.05);
+}
+
+.coach-draft-card h3 {
+  margin-bottom: 8px;
+  color: var(--color-gold);
+  font-size: 11px;
+}
+
+.coach-draft-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin: 0;
+}
+
+.coach-draft-card dl > div {
+  min-width: 0;
+}
+
+.coach-draft-card dt {
+  color: #FFFFFF;
+  font-size: 8px;
+  opacity: 0.55;
+}
+
+.coach-draft-card dd {
+  overflow-wrap: anywhere;
+  margin: 2px 0 0;
+  font-size: 9px;
+}
+
+.coach-draft-actions,
+.coach-screenshot-picker-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.coach-draft-actions button,
+.coach-screenshot-picker-actions button {
+  border: 1px solid var(--color-gold);
+  border-radius: 6px;
+  padding: 7px 9px;
+  background: transparent;
+  color: #FFFFFF;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.coach-draft-actions button:first-child,
+.coach-screenshot-picker-actions button:last-child {
+  background: var(--color-gold);
+  color: #0D0D0D;
+  font-weight: 700;
+}
+
+.coach-screenshot-picker-backdrop {
+  position: fixed;
+  z-index: 80;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.coach-screenshot-picker {
+  display: flex;
+  width: min(100%, 560px);
+  max-height: min(82dvh, 700px);
+  flex-direction: column;
+  gap: 10px;
+  overflow: hidden;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  background: var(--color-bg-elevated);
+  color: #FFFFFF;
+  font-size: 10px;
+}
+
+.coach-screenshot-picker header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.coach-screenshot-picker header h2 {
+  font-size: 14px;
+}
+
+.coach-screenshot-list {
+  display: grid;
+  min-height: 0;
+  gap: 7px;
+  overflow-y: auto;
+}
+
+.coach-screenshot-option {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid var(--color-border);
+  border-radius: 7px;
+  padding: 7px;
+  background: transparent;
+  color: #FFFFFF;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.coach-screenshot-option.selected {
+  border-color: var(--color-gold);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.coach-screenshot-option img,
+.coach-screenshot-thumbnail-placeholder {
+  display: grid;
+  width: 72px;
+  height: 50px;
+  place-items: center;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #FFFFFF;
+  font-size: 7px;
+  object-fit: cover;
+}
+
+.coach-screenshot-option > span:nth-child(2) {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+
+.coach-screenshot-option strong,
+.coach-screenshot-option small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.coach-screenshot-option small {
+  opacity: 0.65;
+}
+
+.coach-screenshot-selected {
+  color: var(--color-gold);
+  font-size: 8px;
+}
+
+.coach-screenshot-picker-actions {
+  justify-content: flex-end;
+}
+
 @media (max-width: 700px) {
   .coaching-chat {
     position: relative;
@@ -818,6 +1033,26 @@
   .coach-prompt-chips button {
     max-width: 260px;
     white-space: nowrap;
+  }
+
+  .coach-screenshot-picker-backdrop {
+    padding: 8px;
+  }
+
+  .coach-screenshot-picker {
+    max-height: 88dvh;
+    padding: 12px;
+  }
+
+  .coach-screenshot-option {
+    grid-template-columns: 56px minmax(0, 1fr) auto;
+    gap: 6px;
+  }
+
+  .coach-screenshot-option img,
+  .coach-screenshot-thumbnail-placeholder {
+    width: 56px;
+    height: 44px;
   }
 }
 

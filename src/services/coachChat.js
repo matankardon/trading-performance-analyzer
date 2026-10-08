@@ -1,6 +1,7 @@
 import { supabase } from "../supabaseClient";
 import { readOpenAiSseStream } from "./coachChatStream";
 import { EMPTY_COACH_REPLY_ERROR, requestWithStreamFallback } from "./coachReplyFallback";
+import { buildScreenshotAnalysisRequestBody } from "./coachChatRequestPayloads";
 
 function readableFunctionError(error) {
   return error?.detail || error?.error || error?.message || "Coach request failed. Please try again.";
@@ -156,6 +157,39 @@ class CoachHttpError extends Error {
   }
 }
 
+async function getCoachAccessToken() {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw new Error(sessionError.message);
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) throw new Error("A valid Supabase access token is required. Please sign in again.");
+  return accessToken;
+}
+
+function coachFunctionUrl() {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) throw new Error("Coach is not configured.");
+  return {
+    url: `${url.replace(/\/$/, "")}/functions/v1/coach-chat`,
+    anonKey,
+  };
+}
+
+function responseError(data, status) {
+  return new CoachHttpError(
+    readableFunctionError(data) || `Coach request failed with HTTP ${status}.`,
+    status,
+  );
+}
+
+async function readFunctionError(response) {
+  try {
+    return await response.json();
+  } catch {
+    return null;
+  }
+}
+
 export async function requestCoachReply(message, history, context, { signal, onToken = () => {} } = {}) {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
   if (sessionError) throw new Error(sessionError.message);
@@ -240,6 +274,104 @@ export async function requestCoachReply(message, history, context, { signal, onT
   }
   throw new Error("Coach request failed. Please try again.");
 }
+
+  export async function requestCoachScreenshotReply({ tradeIds, message, history, context, signal, onToken = () => {} }) {
+    const accessToken = await getCoachAccessToken();
+    const { url, anonKey } = coachFunctionUrl();
+    let responseStatus = null;
+    let responseContentType = "unavailable";
+    const sendRequest = async (stream) => {
+      const response = await fetch(url, {
+        method: "POST",
+        signal,
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          apikey: anonKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(buildScreenshotAnalysisRequestBody({
+          tradeIds,
+          message,
+          history,
+          context,
+          stream,
+        })),
+      });
+      responseStatus = response.status;
+      responseContentType = response.headers.get("Content-Type") || "missing";
+      return response;
+    };
+
+    let response;
+    try {
+      response = await sendRequest(true);
+    } catch (error) {
+      if (signal?.aborted) return { reply: "", stopped: true };
+      throw error;
+    }
+    if (!response.ok) {
+      const errorBody = await readFunctionError(response);
+      if (response.status < 500) throw responseError(errorBody, response.status);
+      console.error("Coach screenshot streaming fallback", {
+        status: response.status,
+        contentType: responseContentType,
+        reason: `HTTP ${response.status}`,
+        firstRawChunk: "",
+      });
+      const complete = await sendRequest(false);
+      const completeBody = await readFunctionError(complete);
+      if (!complete.ok) throw responseError(completeBody, complete.status);
+      if (typeof completeBody?.reply !== "string" || !completeBody.reply.trim()) {
+        throw new Error("Coach returned an empty reply. Retry.");
+      }
+      onToken(completeBody.reply);
+      return { reply: completeBody.reply, stopped: false, fallback: true };
+    }
+
+    if (!response.headers.get("Content-Type")?.includes("text/event-stream")) {
+      const data = await readFunctionError(response);
+      if (typeof data?.reply === "string" && data.reply.trim()) {
+        onToken(data.reply);
+        return { reply: data.reply, stopped: false };
+      }
+    }
+    return requestWithStreamFallback({
+      streamRequest: () => readOpenAiSseStream(response.body, onToken, signal),
+      completeRequest: async () => {
+        const complete = await sendRequest(false);
+        const data = await readFunctionError(complete);
+        if (!complete.ok) throw responseError(data, complete.status);
+        return data;
+      },
+      onFallback: ({ reason }) => {
+        console.error("Coach screenshot streaming fallback", {
+          status: responseStatus,
+          contentType: responseContentType,
+          reason,
+        });
+        onToken("");
+      },
+    });
+  }
+
+  export async function requestCoachTradeDraft(message, history, allowLists) {
+    const { data, error } = await supabase.functions.invoke("coach-chat", {
+      body: {
+        mode: "draft_trade",
+        message,
+        history: history.slice(-20),
+        allowLists,
+      },
+    });
+    if (error) {
+      const responseBody = await readFunctionError(error.context);
+      throw new Error(readableFunctionError(responseBody) || readableFunctionError(error));
+    }
+    if (data?.ok !== true || !data.draft || typeof data.draft !== "object") {
+      throw new Error(data?.error || "Coach returned an incomplete trade draft.");
+    }
+    return data.draft;
+  }
 
 export async function requestCoachTitle(message, reply, context) {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession();

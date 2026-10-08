@@ -1,4 +1,6 @@
 import { INDICATORS, SETUP_CONDITIONS } from "../../../src/constants/strategyOptions.js";
+import { isValidDraftAllowLists } from "./draftTrade.ts";
+import { isValidScreenshotTradeIds } from "./screenshotAnalysis.ts";
 
 const factorKeys = new Set([
   "session",
@@ -12,6 +14,7 @@ const factorKeys = new Set([
 const conditionLabels = SETUP_CONDITIONS.map(({ label }) => label);
 const indicatorNames = new Set(INDICATORS.map(({ name }) => name));
 const forbiddenTextPattern = /[\u0000-\u001f\u007f]|\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b|\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i;
+const privateUrlOrPathPattern = /https?:\/\/|(?<![\w])(?:[A-Za-z]:)?\/?[\w.-]+(?:[\\/][\w.-]+)+(?![\w])/i;
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -25,7 +28,9 @@ function exactKeys(value: unknown, keys: string[]): value is Record<string, unkn
 }
 
 function safeString(value: unknown, maxLength = 60): value is string {
-  return typeof value === "string" && value.length <= maxLength && !forbiddenTextPattern.test(value);
+  return typeof value === "string" && value.length <= maxLength
+    && !forbiddenTextPattern.test(value)
+    && (!privateUrlOrPathPattern.test(value) || /^[A-Z]{3}\/[A-Z]{3}$/.test(value));
 }
 
 function finiteOrNull(value: unknown): boolean {
@@ -165,15 +170,46 @@ export function isValidCoachContext(value: unknown): boolean {
   return Array.isArray(value.recentTrades) && value.recentTrades.length <= 50 && value.recentTrades.every(validRecentTrade);
 }
 
-export function isValidCoachChatRequest(value: unknown): value is { mode?: string; message: string; history: Array<{ role: string; content: string }>; context: Record<string, unknown> } {
-  if (!isRecord(value)) return false;
-  const hasMode = Object.hasOwn(value, "mode");
-  return exactKeys(value, hasMode ? ["mode", "message", "history", "context"] : ["message", "history", "context"])
-    && (!hasMode || ["stream", "complete", "title"].includes(value.mode as string))
-    && typeof value.message === "string" && value.message.trim().length > 0 && value.message.length <= 2000
+function validMessageAndHistory(value: Record<string, unknown>): boolean {
+  return typeof value.message === "string" && value.message.trim().length > 0 && value.message.length <= 2000
     && Array.isArray(value.history) && value.history.length <= 20
     && value.history.every((entry) => exactKeys(entry, ["role", "content"])
       && ["user", "assistant"].includes(entry.role)
-      && typeof entry.content === "string" && entry.content.length <= 2000)
+      && typeof entry.content === "string" && entry.content.length <= 2000);
+}
+
+export function isValidCoachChatRequest(value: unknown): value is {
+  mode?: string;
+  message: string;
+  history: Array<{ role: string; content: string }>;
+  context?: Record<string, unknown>;
+  tradeIds?: string[];
+  stream?: boolean;
+  allowLists?: unknown;
+} {
+  if (!isRecord(value)) return false;
+  if (!Object.hasOwn(value, "mode")) {
+    return exactKeys(value, ["message", "history", "context"])
+      && validMessageAndHistory(value)
+      && isValidCoachContext(value.context);
+  }
+  if (value.mode === "draft_trade") {
+    return exactKeys(value, ["mode", "message", "history", "allowLists"])
+      && validMessageAndHistory(value)
+      && isValidDraftAllowLists(value.allowLists);
+  }
+  if (value.mode === "analyze_screenshot") {
+    const requiredKeys = ["mode", "message", "history", "context", "tradeIds"];
+    const hasStream = Object.hasOwn(value, "stream");
+    return exactKeys(value, hasStream ? [...requiredKeys, "stream"] : requiredKeys)
+      && (!hasStream || typeof value.stream === "boolean")
+      && validMessageAndHistory(value)
+      && isValidCoachContext(value.context)
+      && isValidScreenshotTradeIds(value.tradeIds);
+  }
+  const hasMode = Object.hasOwn(value, "mode");
+  return exactKeys(value, ["mode", "message", "history", "context"])
+    && hasMode && ["stream", "complete", "title"].includes(value.mode as string)
+    && validMessageAndHistory(value)
     && isValidCoachContext(value.context);
 }

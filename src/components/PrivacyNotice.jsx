@@ -6,10 +6,10 @@ function PrivacyNotice() {
       <p className="eyebrow">PRIVACY NOTICE</p>
       <h1>Privacy Notice</h1>
       <p>
-        Screenshots uploaded through the Screenshot Trade Workflow are stored privately with the associated trade so you can view them later in your journal and so the team can use original AI extraction snapshots to improve extraction accuracy over time. Screenshots are not public and are not shared with other users.
+        Screenshots uploaded through the Screenshot Trade Workflow are stored in a private bucket and linked to the associated journal trade. When you use screenshot extraction or ask Coach to analyze a saved screenshot, the selected image is sent to OpenAI for analysis. Screenshot paths and image data are not saved in Coach conversation history.
       </p>
       <p>
-        Screenshot storage and AI improvement language on this page is a development draft and requires legal review before production use. A Settings-level opt-out for screenshot storage is not available yet.
+        This privacy notice is a development draft and requires legal review before production use. A Settings-level opt-out for screenshot storage is not available yet.
       </p>
     </section>
   );

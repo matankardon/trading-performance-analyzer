@@ -56,7 +56,7 @@ function getAnnotation(value) {
   return match ? String(value).trim().slice(match[0].length).trim() : "";
 }
 
-function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onConsent, strategies = [], trades = [] }) {
+function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onConsent, consentPurpose = "trade-entry", strategies = [], trades = [] }) {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [stage, setStage] = useState("upload");
@@ -216,12 +216,12 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
           <div className="modal-header">
             <div>
               <p className="eyebrow">SCREENSHOT PRIVACY</p>
-              <h2 id="screenshot-consent-title">Before you upload</h2>
+              <h2 id="screenshot-consent-title">Before using screenshots</h2>
             </div>
             <button className="close-btn" type="button" onClick={onClose} aria-label="Close screenshot workflow">×</button>
           </div>
           <p className="screenshot-consent-copy">
-            Screenshots you upload are saved privately with your trade so you can view them later in your journal, and to help improve AI extraction accuracy over time. They are never shared or made public. A Settings-level opt-out is not available yet.
+            Saved screenshots remain private in your journal. When you ask Coach to analyze one, that image is sent to OpenAI for analysis. Screenshots are never made public. A Settings-level opt-out is not available yet.
           </p>
           <label className="screenshot-consent-checkbox">
             <input type="checkbox" checked={dontShowConsentAgain} onChange={(event) => setDontShowConsentAgain(event.target.checked)} />
@@ -229,7 +229,9 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
           </label>
           <div className="form-actions">
             <button className="cancel-btn" type="button" onClick={onClose}>Cancel</button>
-            <button className="save-btn" type="button" onClick={handleConsentContinue}>Continue to screenshot upload</button>
+            <button className="save-btn" type="button" onClick={handleConsentContinue}>
+              {consentPurpose === "coach" ? "Continue to Coach" : "Continue to screenshot upload"}
+            </button>
           </div>
         </div>
       </div>
@@ -262,7 +264,7 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
             <div className="screenshot-dropzone">
               <span className="empty-state-mark" aria-hidden="true">IMG</span>
               <h3>Upload Trade Screenshot</h3>
-              <p>Use a TradingView, desktop chart, mobile chart, or supported platform screenshot. This screenshot will be saved privately with this trade so you can view it later in your journal and to help improve AI extraction accuracy over time. It is never shared or made public.</p>
+              <p>Use a TradingView, desktop chart, mobile chart, or supported platform screenshot. The image is stored privately with this trade. When you use screenshot extraction or ask Coach to analyze it, the image is sent to OpenAI for analysis; it is not made public or available to other users.</p>
               <label className="secondary-btn screenshot-file-label">
                 Choose image
                 <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleFileChange} />
@@ -277,7 +279,7 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
             <div className="screenshot-review-layout">
               <div className="screenshot-preview-panel">
                 {previewUrl ? <img src={previewUrl} alt="Temporary trade screenshot preview" /> : <span>Preview unavailable</span>}
-                <small>This screenshot will be saved privately with this trade so you can view it later in your journal and to help improve AI extraction accuracy over time. It is never shared or made public.</small>
+                <small>The image is stored privately with this trade. Screenshot extraction or Coach analysis sends the image to OpenAI; it is not made public or available to other users.</small>
               </div>
               <div className="extraction-review-panel">
                 <div className="review-heading"><div><p className="eyebrow">TRADE DETECTED</p><h3>Review before saving</h3></div><span className="confidence-badge confidence-not-detected">{aiAnalyzed ? "AI EXTRACTED" : "NOT DETECTED"}</span></div>

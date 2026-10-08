@@ -29,7 +29,20 @@ screenshots, UUIDs, and account identifiers.
 
 Requests may use `mode: "stream"` for OpenAI-compatible SSE deltas,
 `mode: "complete"` for a non-streaming reply, or `mode: "title"` for a
-short conversation title. Streaming failures fall back to a regular completion.
+short conversation title. `mode: "analyze_screenshot"` accepts one or two
+journal trade UUIDs and streams a visual description tied to the selected
+trade's journaled fields. For this mode, the function uses the caller's
+bearer-JWT-scoped Supabase client to read `public.trades.screenshot_path` and
+download from the private `trade-screenshots` bucket; the existing own-folder
+Storage policy enforces ownership. Image bytes and storage paths are not
+returned or logged. Images larger than 10 MiB and non-image files are rejected.
+The selected image is sent to OpenAI for analysis.
+
+`mode: "draft_trade"` returns allow-list-checked JSON from explicit user text.
+It leaves unstated fields empty and never writes a trade; the client opens the
+existing manual trade form for review and saving. Streaming failures fall back
+to a regular completion, including screenshot analysis with the same selected
+trade IDs. All modes count against the existing rate limit.
 Each authenticated user is limited to 30 requests per hour by the
 `consume_coach_request` RPC. The rate-limit table is not readable or writable by
 client roles; only the Edge Function's service-role client can invoke the RPC.

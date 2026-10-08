@@ -111,6 +111,16 @@ describe("buildCoachContext", () => {
     expect(recentTrade).not.toHaveProperty("screenshotPath");
   });
 
+  it("redacts URL and path-like journal text while keeping common FX symbols", () => {
+    const context = buildCoachContext([
+      trade(1, { asset: "https://private.invalid/chart.png" }),
+      trade(2, { asset: "private/storage/chart.png" }),
+      trade(3, { asset: "EUR/USD" }),
+    ], [], "2026-10-07");
+    expect(context.recentTrades.map(({ asset }) => asset)).toEqual(["[redacted]", "[redacted]", "EUR/USD"]);
+    expect(JSON.stringify(context)).not.toMatch(/https?:\/\/|private\/storage/);
+  });
+
   it("caps recent journal rows at 50, newest first", () => {
     const context = buildCoachContext(
       Array.from({ length: 65 }, (_, index) => {

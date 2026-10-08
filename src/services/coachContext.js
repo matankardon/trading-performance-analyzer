@@ -6,6 +6,8 @@ export const MIN_COACH_TRADES = 10;
 
 const emailPattern = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
 const uuidPattern = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/gi;
+const urlPattern = /\bhttps?:\/\/[^\s]+/gi;
+const pathPattern = /(?<![\w])(?:[A-Za-z]:)?\/?[\w.-]+(?:[\\/][\w.-]+)+(?![\w])/g;
 
 function safeText(value, fallback = "Not recorded") {
   if (value === null || value === undefined) return fallback;
@@ -16,6 +18,8 @@ function safeText(value, fallback = "Not recorded") {
   const text = withoutControls
     .replace(emailPattern, "[redacted]")
     .replace(uuidPattern, "[redacted]")
+    .replace(urlPattern, "[redacted]")
+    .replace(pathPattern, (path) => /^[A-Z]{3}\/[A-Z]{3}$/.test(path) ? path : "[redacted]")
     .trim()
     .slice(0, 60);
   return text || fallback;

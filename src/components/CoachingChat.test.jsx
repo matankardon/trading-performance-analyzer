@@ -11,6 +11,8 @@ const {
   loadCoachConversations,
   renameCoachConversation,
   requestCoachReply,
+  requestCoachScreenshotReply,
+  requestCoachTradeDraft,
   requestCoachTitle,
   saveCoachAssistantReply,
   saveCoachUserMessage,
@@ -24,10 +26,16 @@ const {
   loadCoachConversations: vi.fn(),
   renameCoachConversation: vi.fn(),
   requestCoachReply: vi.fn(),
+  requestCoachScreenshotReply: vi.fn(),
+  requestCoachTradeDraft: vi.fn(),
   requestCoachTitle: vi.fn(),
   saveCoachAssistantReply: vi.fn(),
   saveCoachUserMessage: vi.fn(),
   updateCoachUserMessage: vi.fn(),
+}));
+
+const { loadTradeScreenshotSignedUrl } = vi.hoisted(() => ({
+  loadTradeScreenshotSignedUrl: vi.fn(),
 }));
 
 vi.mock("../services/coachChat", () => ({
@@ -39,11 +47,15 @@ vi.mock("../services/coachChat", () => ({
   loadCoachConversations,
   renameCoachConversation,
   requestCoachReply,
+  requestCoachScreenshotReply,
+  requestCoachTradeDraft,
   requestCoachTitle,
   saveCoachAssistantReply,
   saveCoachUserMessage,
   updateCoachUserMessage,
 }));
+
+vi.mock("../services/tradeScreenshots", () => ({ loadTradeScreenshotSignedUrl }));
 
 function trades(count) {
   return Array.from({ length: count }, (_, index) => ({
@@ -83,6 +95,9 @@ describe("Coaching chat", () => {
     loadCoachConversations.mockReset().mockResolvedValue([]);
     renameCoachConversation.mockReset().mockImplementation(async (id, title) => ({ id, title, created_at: "2026-10-07T10:00:00Z", updated_at: "2026-10-07T10:00:00Z" }));
     requestCoachReply.mockReset();
+    requestCoachScreenshotReply.mockReset();
+    requestCoachTradeDraft.mockReset();
+    loadTradeScreenshotSignedUrl.mockReset().mockResolvedValue("https://signed.invalid/image");
     requestCoachTitle.mockReset().mockRejectedValue(new Error("Title generation unavailable."));
     saveCoachAssistantReply.mockReset().mockResolvedValue({ id: "saved-assistant-id", role: "assistant" });
     saveCoachUserMessage.mockReset().mockResolvedValue({ id: "saved-user-id", role: "user" });
@@ -93,10 +108,116 @@ describe("Coaching chat", () => {
   it("shows the gate with 9 trades and enables the composer at 10", async () => {
     const { rerender } = render(<CoachingChat trades={trades(9)} strategyLibrary={[]} />);
     expect(await screen.findByText("Log 10 trades to start coaching (9/10)")).toBeInTheDocument();
-    expect(screen.queryByRole("textbox", { name: "Ask your coach anything about your trading" })).not.toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" })).toBeInTheDocument();
 
     rerender(<CoachingChat trades={trades(10)} strategyLibrary={[]} />);
     expect(await screen.findByRole("textbox", { name: "Ask your coach anything about your trading" })).toBeInTheDocument();
+  });
+
+  it("selects and removes up to two journal screenshots in the picker", async () => {
+    const screenshotTrades = trades(3).map((trade) => ({ ...trade, screenshotPath: `${trade.id}.png` }));
+    render(<CoachingChat trades={screenshotTrades} strategyLibrary={[]} screenshotConsentAcknowledged />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Attach from journal" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Attach from journal" }));
+    expect(await screen.findByRole("dialog", { name: "Attach from journal" })).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { name: /Select screenshot for AAPL/ })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /Select screenshot for AAPL/ })[0]);
+    fireEvent.click(screen.getAllByRole("button", { name: /Select screenshot for AAPL/ })[0]);
+    expect(screen.getByText("Attach up to two screenshots per message.")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Remove AAPL screenshot/ })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: /Remove AAPL screenshot/ })[0]);
+    expect(screen.getAllByRole("button", { name: /Remove AAPL screenshot/ })).toHaveLength(1);
+  });
+
+  it("requires screenshot consent before sending and does not persist or send early", async () => {
+    const onRequireScreenshotConsent = vi.fn();
+    const screenshotTrades = trades(1).map((trade) => ({ ...trade, screenshotPath: `${trade.id}.png` }));
+    render(<CoachingChat trades={screenshotTrades} strategyLibrary={[]} onRequireScreenshotConsent={onRequireScreenshotConsent} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Attach from journal" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Attach from journal" }));
+    const pickerOption = await screen.findByRole("button", { name: "Select screenshot for AAPL 2026-10-07" });
+    fireEvent.click(pickerOption);
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" }), {
+      target: { value: "Please review this screenshot" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(onRequireScreenshotConsent).toHaveBeenCalledOnce();
+    expect(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" }))
+      .toHaveValue("Please review this screenshot");
+    expect(requestCoachScreenshotReply).not.toHaveBeenCalled();
+    expect(saveCoachUserMessage).not.toHaveBeenCalled();
+  });
+
+  it("sends a screenshot request using IDs only in the request and text-only history", async () => {
+    const screenshotTrades = trades(1).map((trade) => ({
+      ...trade,
+      id: "11111111-1111-4111-8111-111111111111",
+      screenshotPath: "private/storage/path.png",
+    }));
+    requestCoachScreenshotReply.mockResolvedValue({ reply: "The screenshot shows a marked entry level.", stopped: false });
+    render(<CoachingChat trades={screenshotTrades} strategyLibrary={[]} screenshotConsentAcknowledged />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" }), {
+      target: { value: "Look at my last trade's screenshot" },
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    await screen.findByText("The screenshot shows a marked entry level.");
+    expect(requestCoachScreenshotReply).toHaveBeenCalledWith(expect.objectContaining({
+      tradeIds: ["11111111-1111-4111-8111-111111111111"],
+      message: "Look at my last trade's screenshot",
+    }));
+    await waitFor(() => expect(saveCoachUserMessage).toHaveBeenCalledWith(
+      createCoachConversation.mock.calls[0][0],
+      "Looked at screenshot of AAPL 2026-10-07",
+    ));
+    expect(saveCoachUserMessage.mock.calls[0][1]).not.toMatch(/private\/storage|11111111|https?:\/\//);
+  });
+
+  it("shows a clear error when screenshot intent has no saved screenshot", async () => {
+    render(<CoachingChat trades={trades(0)} strategyLibrary={[]} screenshotConsentAcknowledged />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" }), {
+      target: { value: "Look at my last trade's screenshot" },
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("No recent trade with a saved screenshot was found.");
+    expect(requestCoachScreenshotReply).not.toHaveBeenCalled();
+  });
+
+  it("creates a draft below the journal gate and opens the manual review flow", async () => {
+    const draft = {
+      asset: "Gold", direction: "Short", entry: 2345, exit: 2330, stopLoss: null, takeProfit: null,
+      pnl: -15, date: null, session: null, strategyName: null, versionNumber: null,
+      conditions: ["Liquidity Sweep", "MSS"], indicators: [],
+    };
+    requestCoachTradeDraft.mockResolvedValue(draft);
+    const onReviewDraft = vi.fn();
+    render(<CoachingChat trades={trades(0)} strategyLibrary={[]} onReviewDraft={onReviewDraft} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" }), {
+      target: { value: "Log a trade: short gold, entry 2345, exit 2330, P&L -15, sweep + MSS" },
+    });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(await screen.findByRole("region", { name: "Trade draft" })).toBeInTheDocument();
+    expect(await screen.findByText(/Not stated in your message: stop loss/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Review & save" }));
+    expect(onReviewDraft).toHaveBeenCalledWith(draft);
+  });
+
+  it("blocks normal coaching questions under 10 trades while permitting explicit draft intent", async () => {
+    requestCoachTradeDraft.mockResolvedValue({ asset: null, direction: null, entry: null, exit: null, stopLoss: null, takeProfit: null, pnl: null, date: null, session: null, strategyName: null, versionNumber: null, conditions: [], indicators: [] });
+    render(<CoachingChat trades={trades(2)} strategyLibrary={[]} />);
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" }), { target: { value: "How am I doing?" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Log 10 trades to use journal-based coaching.");
+    expect(requestCoachReply).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" }), { target: { value: "Log a trade" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled());
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    expect(await screen.findByText(/Trade draft prepared/)).toBeInTheDocument();
+    expect(requestCoachTradeDraft).toHaveBeenCalledOnce();
   });
 
   it("sends example prompts immediately and blocks duplicate sends while waiting", async () => {

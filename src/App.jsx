@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { supabase } from "./supabaseClient";
+import { loadTradeScreenshotSignedUrl } from "./services/tradeScreenshots";
+import { tradeDraftToForm } from "./services/tradeDraftForm";
 import Auth from "./Auth";
 import PrivacyNotice from "./components/PrivacyNotice";
 import TickerBar from "./components/TickerBar";
@@ -64,6 +66,8 @@ function App() {
   const [showNavigationMenu, setShowNavigationMenu] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showScreenshotConsent, setShowScreenshotConsent] = useState(false);
+  const [screenshotConsentPurpose, setScreenshotConsentPurpose] = useState("");
+  const [screenshotConsentUserId, setScreenshotConsentUserId] = useState("");
   const [screenshotFile, setScreenshotFile] = useState(null);
   const [screenshotAiExtraction, setScreenshotAiExtraction] = useState(null);
   const [screenshotAnnotations, setScreenshotAnnotations] = useState({});
@@ -253,17 +257,12 @@ function App() {
         return;
       }
 
-      const { data, error } = await supabase.storage
-        .from("trade-screenshots")
-        .createSignedUrl(selectedTrade.screenshotPath, 300);
-
-      if (error) {
-        console.error("Could not load trade screenshot:", error);
+      try {
+        const signedUrl = await loadTradeScreenshotSignedUrl(selectedTrade.screenshotPath);
+        if (!cancelled) setSelectedTradeScreenshotUrl(signedUrl);
+      } catch (error) {
+        console.error("Could not load trade screenshot:", error.message);
         return;
-      }
-
-      if (!cancelled) {
-        setSelectedTradeScreenshotUrl(data?.signedUrl || "");
       }
     }
 
@@ -418,6 +417,15 @@ function App() {
     setShowTradeForm(true);
   }
 
+  function openDraftTrade(draft) {
+    setEditingTrade(null);
+    setScreenshotFile(null);
+    setScreenshotAiExtraction(null);
+    setScreenshotAnnotations({});
+    setForm(tradeDraftToForm(draft, strategyLibrary, emptyTrade));
+    setShowTradeForm(true);
+  }
+
   function openTradeEntryChoice() {
     setShowTradeEntryChoice(true);
   }
@@ -437,6 +445,7 @@ function App() {
   }
 
   function openScreenshotWorkflow() {
+    setScreenshotConsentPurpose("trade-entry");
     if (currentUser?.user_metadata?.screenshot_consent_acknowledged) {
       setShowScreenshotWorkflow(true);
     } else {
@@ -447,6 +456,12 @@ function App() {
   function closeScreenshotWorkflow() {
     setShowScreenshotWorkflow(false);
     setShowScreenshotConsent(false);
+    setScreenshotConsentPurpose("");
+  }
+
+  function requestCoachScreenshotConsent() {
+    setScreenshotConsentPurpose("coach");
+    setShowScreenshotConsent(true);
   }
 
   async function handleScreenshotConsent(dontShowAgain) {
@@ -469,7 +484,12 @@ function App() {
       }
     }
 
+    setScreenshotConsentUserId(currentUser?.id || "");
     setShowScreenshotConsent(false);
+    if (screenshotConsentPurpose === "coach") {
+      setScreenshotConsentPurpose("");
+      return true;
+    }
     setShowScreenshotWorkflow(true);
     return true;
   }
@@ -1874,6 +1894,7 @@ function App() {
                     handleChange
                   }
                 >
+                  <option value="">Not stated</option>
                   <option value="Long">
                     Long
                   </option>
@@ -1899,6 +1920,7 @@ function App() {
                     handleChange
                   }
                 >
+                  <option value="">Not stated</option>
                   <option value="New York">
                     New York
                   </option>
@@ -2444,7 +2466,16 @@ function App() {
           )}
 
           {isDayTrading && activePage === "Coaching" && (
-            <Coaching trades={trades} strategyLibrary={strategyLibrary} />
+            <Coaching
+              trades={trades}
+              strategyLibrary={strategyLibrary}
+              screenshotConsentAcknowledged={Boolean(
+                (currentUser?.id && screenshotConsentUserId === currentUser.id)
+                  || currentUser?.user_metadata?.screenshot_consent_acknowledged,
+              )}
+              onRequireScreenshotConsent={requestCoachScreenshotConsent}
+              onReviewDraft={openDraftTrade}
+            />
           )}
 
           {isDayTrading && activePage === "Events & News" && (
@@ -2514,6 +2545,7 @@ function App() {
             trades={trades}
             showConsent={showScreenshotConsent}
             onConsent={handleScreenshotConsent}
+            consentPurpose={screenshotConsentPurpose}
           />
         </Suspense>
       )}

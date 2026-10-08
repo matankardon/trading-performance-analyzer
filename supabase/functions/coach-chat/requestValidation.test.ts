@@ -3,6 +3,13 @@ import { buildCoachContext } from "../../../src/services/coachContext.js";
 import { isValidCoachChatRequest } from "./requestValidation";
 
 const versionId = "11111111-1111-4111-8111-111111111111";
+const secondTradeId = "22222222-2222-4222-8222-222222222222";
+const validDraftAllowLists = {
+  sessions: ["New York", "London", "Asia", "Overlap"],
+  conditions: ["Liquidity Sweep", "MSS", "FVG", "Displacement", "Order Block", "Stochastic Confirmation"],
+  indicators: ["SMA", "EMA", "RSI", "MACD", "Bollinger", "ADX", "Fibonacci", "Ichimoku", "StdDev"],
+  strategies: [{ name: "Opening Range", versions: [1] }],
+};
 const context = buildCoachContext(Array.from({ length: 10 }, (_, index) => ({
   date: "2026-10-07",
   direction: "Long",
@@ -52,7 +59,42 @@ describe("coach chat request validation", () => {
     expect(isValidCoachChatRequest(request({ mode: "stream" }))).toBe(true);
     expect(isValidCoachChatRequest(request({ mode: "complete" }))).toBe(true);
     expect(isValidCoachChatRequest(request({ mode: "title" }))).toBe(true);
+    expect(isValidCoachChatRequest(request({
+      mode: "analyze_screenshot",
+      tradeIds: [versionId],
+    }))).toBe(true);
+    expect(isValidCoachChatRequest({
+      mode: "draft_trade",
+      message: "Log a trade: short gold",
+      history: [],
+      allowLists: validDraftAllowLists,
+    })).toBe(true);
     expect(isValidCoachChatRequest(request({ mode: "admin" }))).toBe(false);
+  });
+
+  it("validates screenshot IDs and trade ID limits", () => {
+    expect(isValidCoachChatRequest(request({ mode: "analyze_screenshot", tradeIds: ["not-a-uuid"] }))).toBe(false);
+    expect(isValidCoachChatRequest(request({
+      mode: "analyze_screenshot",
+      tradeIds: [versionId, secondTradeId, "33333333-3333-4333-8333-333333333333"],
+    }))).toBe(false);
+    expect(isValidCoachChatRequest(request({ mode: "analyze_screenshot", tradeIds: [] }))).toBe(false);
+    expect(isValidCoachChatRequest(request({ mode: "analyze_screenshot", tradeIds: [versionId], stream: "yes" }))).toBe(false);
+  });
+
+  it("validates draft allow-lists without accepting extra fields", () => {
+    expect(isValidCoachChatRequest({
+      mode: "draft_trade",
+      message: "Log a trade",
+      history: [],
+      allowLists: { ...validDraftAllowLists, unexpected: [] },
+    })).toBe(false);
+    expect(isValidCoachChatRequest({
+      mode: "draft_trade",
+      message: "Log a trade",
+      history: [],
+      allowLists: { ...validDraftAllowLists, indicators: ["not an indicator"] },
+    })).toBe(false);
   });
 
   it("rejects unknown fields and raw trade/private identifiers", () => {
