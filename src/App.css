@@ -1974,6 +1974,312 @@ nav {
   white-space: nowrap;
 }
 
+.journal-calendar-week-row:not(.journal-calendar-weekday-row) .journal-calendar-day:not(.out-of-month) {
+  border-color: rgba(212, 175, 55, 0.35);
+  animation: journal-calendar-enter 220ms ease both;
+  animation-delay: var(--row-delay, 0ms);
+}
+
+.journal-calendar-day.out-of-month {
+  animation: none !important;
+}
+
+.journal-calendar-day:hover:not(.out-of-month),
+.journal-calendar-day:focus-visible:not(.out-of-month) {
+  backdrop-filter: blur(8px) saturate(140%);
+  background-image: linear-gradient(135deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.03));
+  border-color: #e7ce64;
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255,  255, 255, 0.25);
+  transform: scale(1.06) translateY(-3px);
+  z-index: 4;
+}
+
+.journal-calendar-day.out-of-month:hover,
+.journal-calendar-day.out-of-month:focus-visible {
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  z-index: auto;
+}
+
+.journal-calendar-day.status-win:hover:not(.out-of-month),
+.journal-calendar-day.status-win:focus-visible:not(.out-of-month) {
+  background-color: #14766b;
+}
+
+.journal-calendar-day.status-loss:hover:not(.out-of-month),
+.journal-calendar-day.status-loss:focus-visible:not(.out-of-month) {
+  background-color: #9c4458;
+}
+
+.journal-calendar-day.today {
+  outline: 1px solid #d4af37;
+  outline-offset: -1px;
+}
+
+.journal-calendar-day.selected {
+  border: 1px solid #d4af37;
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.34), 0 0 18px rgba(212, 175, 55, 0.2);
+}
+
+.journal-calendar-skeleton-cell {
+  animation: journal-calendar-shimmer 1.25s ease-in-out infinite;
+  animation-delay: var(--skeleton-delay, 0ms);
+  background: linear-gradient(105deg, #19191b 30%, rgba(212, 175, 55, 0.12) 45%, #22201a 55%, #19191b 70%);
+  background-size: 250% 100%;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 6px;
+  min-height: 110px;
+}
+
+.journal-calendar-skeleton-week {
+  animation: journal-calendar-shimmer 1.25s ease-in-out infinite;
+  animation-delay: var(--skeleton-delay, 0ms);
+  background: linear-gradient(105deg, transparent 30%, rgba(212, 175, 55, 0.12) 50%, transparent 70%);
+  background-size: 250% 100%;
+  border-radius: 4px;
+}
+
+@keyframes journal-calendar-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@keyframes journal-calendar-enter {
+  from { opacity: 0; transform: scale(0.98); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.journal-day-backdrop {
+  align-items: stretch;
+  backdrop-filter: blur(3px);
+  display: flex;
+  inset: 0;
+  justify-content: flex-end;
+  position: fixed;
+  z-index: 1200;
+}
+
+.journal-day-panel {
+  animation: journal-day-panel-in 220ms ease-out both;
+  background: rgba(18, 18, 20, 0.96);
+  backdrop-filter: blur(20px) saturate(130%);
+  border-left: 1px solid #d4af37;
+  box-shadow: -18px 0 48px rgba(0, 0, 0, 0.55), inset 1px 0 0 rgba(255, 255, 255, 0.06);
+  color: var(--color-text);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: min(420px, 100%);
+}
+
+@keyframes journal-day-panel-in {
+  from { opacity: 0; transform: translateX(32px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.journal-day-panel-heading {
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 22px;
+}
+
+.journal-day-panel-heading h2 {
+  color: var(--color-text);
+  font-size: 17px;
+  line-height: 1.4;
+  margin: 6px 0 9px;
+}
+
+.journal-day-panel-summary {
+  align-items: baseline;
+  display: flex;
+  gap: 12px;
+  margin: 0;
+}
+
+.journal-day-panel-summary strong {
+  font-size: 17px;
+}
+
+.journal-day-panel-summary strong.positive,
+.journal-day-trade-pnl.positive {
+  color: #82cf9a;
+}
+
+.journal-day-panel-summary strong.negative,
+.journal-day-trade-pnl.negative {
+  color: #e18c92;
+}
+
+.journal-day-panel-summary span {
+  color: var(--color-text-muted);
+  font-size: 11px;
+}
+
+.journal-day-panel-close {
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(212, 175, 55, 0.34);
+  border-radius: 6px;
+  color: var(--color-text);
+  display: inline-flex;
+  flex: 0 0 38px;
+  font-size: 23px;
+  height: 38px;
+  justify-content: center;
+}
+
+.journal-day-panel-close:hover {
+  background: rgba(212, 175, 55, 0.12);
+  border-color: var(--color-gold);
+}
+
+.journal-day-panel-content {
+  overflow-y: auto;
+  padding: 14px;
+}
+
+.journal-day-trade {
+  align-items: center;
+  background: linear-gradient(145deg, rgba(31, 31, 34, 0.92), rgba(20, 20, 22, 0.94));
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 9px;
+  display: grid;
+  gap: 10px 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin-bottom: 10px;
+  padding: 14px;
+}
+
+.journal-day-trade-content {
+  min-width: 0;
+}
+
+.journal-day-trade-title {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.journal-day-trade-title > strong {
+  color: var(--color-text);
+  font-size: 14px;
+  overflow-wrap: anywhere;
+}
+
+.journal-direction-badge,
+.journal-quality-badge,
+.journal-rule-break-badge {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  display: inline-flex;
+  font-size: 9px;
+  line-height: 1.3;
+  padding: 3px 7px;
+  white-space: nowrap;
+}
+
+.journal-direction-badge.long {
+  background: rgba(70, 150, 100, 0.16);
+  border-color: rgba(106, 180, 135, 0.42);
+  color: #a3dbb3;
+}
+
+.journal-direction-badge.short {
+  background: rgba(176, 69, 81, 0.16);
+  border-color: rgba(207, 119, 126, 0.42);
+  color: #e7a1a5;
+}
+
+.journal-day-trade-details {
+  color: var(--color-text-muted);
+  font-size: 10px;
+  line-height: 1.6;
+  margin: 7px 0;
+  overflow-wrap: anywhere;
+}
+
+.journal-day-trade-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.journal-quality-badge {
+  color: #d2c8aa;
+}
+
+.journal-quality-badge.emotional,
+.journal-rule-break-badge {
+  background: rgba(156, 68, 88, 0.13);
+  border-color: rgba(207, 119, 126, 0.38);
+  color: #e7a1a5;
+}
+
+.journal-day-trade-pnl {
+  font-size: 15px;
+  white-space: nowrap;
+}
+
+.journal-day-trade-actions {
+  display: flex;
+  gap: 8px;
+  grid-column: 1 / -1;
+}
+
+.journal-day-trade-actions button {
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 5px;
+  color: var(--color-text);
+  flex: 1;
+  min-height: 36px;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.journal-day-trade-actions button:first-child {
+  border-color: rgba(212, 175, 55, 0.5);
+  color: #e5cb66;
+}
+
+.journal-day-trade-actions button:last-child {
+  border-color: rgba(207, 119, 126, 0.4);
+  color: #df9292;
+}
+
+.journal-day-trade-actions button:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: currentColor;
+}
+
+.journal-day-trade-actions button:focus-visible,
+.journal-day-panel button:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+}
+
+.journal-day-empty {
+  align-items: flex-start;
+  color: var(--color-text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 24px 8px;
+}
+
+.journal-day-empty .secondary-btn {
+  background: rgba(212, 175, 55, 0.12);
+  border: 1px solid var(--color-gold);
+  color: var(--color-gold);
+  min-height: 40px;
+  padding: 0 16px;
+}
+
 .journal-calendar-missing,
 .journal-calendar-empty-month {
   color: var(--color-text-muted);
@@ -2060,17 +2366,61 @@ nav {
   }
 
   .journal-day-panel {
-    border: 1px solid rgba(212, 175, 55, 0.3);
+    animation: journal-day-panel-up 220ms ease-out both;
+    border: 1px solid #d4af37;
     border-bottom: 0;
+    border-left: 1px solid #d4af37;
     border-radius: 14px 14px 0 0;
     height: min(82vh, 720px);
     width: 100%;
   }
+
+  .journal-calendar-day:hover:not(.out-of-month),
+  .journal-calendar-day:focus-visible:not(.out-of-month) {
+    transform: none;
+  }
+
+  .journal-calendar-skeleton-cell {
+    min-height: 58px;
+  }
+}
+
+@keyframes journal-day-panel-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 390px) {
   .journal-calendar-day {
     min-height: 52px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .journal-calendar-day,
+    .journal-calendar-skeleton-cell,
+    .journal-calendar-skeleton-week {
+      animation: none !important;
+      transition: opacity 120ms ease !important;
+    }
+
+    .journal-calendar-week-row:not(.journal-calendar-weekday-row):not(.journal-calendar-skeleton-row) .journal-calendar-day:not(.out-of-month) {
+      animation: journal-calendar-reduced-fade 120ms ease both !important;
+      animation-delay: 0ms !important;
+    }
+
+    .journal-calendar-day:hover:not(.out-of-month),
+    .journal-calendar-day:focus-visible:not(.out-of-month) {
+      transform: none;
+    }
+
+    .journal-day-panel {
+      animation: none !important;
+    }
+  }
+
+  @keyframes journal-calendar-reduced-fade {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
 
   .journal-calendar-pnl {
@@ -6624,26 +6974,6 @@ nav {
   border-radius: 10px;
 }
 
-.trade-search {
-  width: 100%;
-  margin-bottom: 12px;
-}
-
-.trade-search input {
-  width: 100%;
-  height: 42px;
-  padding: 0 13px;
-  border: 1px solid #dfe4ea;
-  border-radius: 8px;
-  background: white;
-  color: #1f2937;
-  outline: none;
-}
-
-.trade-search input:focus {
-  border-color: #9ca3af;
-}
-
 .journal-filters-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -7908,7 +8238,6 @@ body::before {
 }
 
 .search-box,
-.trade-search input,
 .journal-controls select,
 .journal-filters-grid select,
 .form-field input,
@@ -7923,7 +8252,6 @@ body::before {
 }
 
 .search-box input::placeholder,
-.trade-search input::placeholder,
 .form-field input::placeholder,
 .form-field textarea::placeholder,
 .extraction-field input::placeholder,

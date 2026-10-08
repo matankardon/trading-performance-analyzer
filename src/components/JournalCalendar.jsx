@@ -33,8 +33,8 @@ function dateFromKey(key) {
 }
 
 function readableDate(key) {
-  return dateFromKey(key).toLocaleDateString(undefined, {
-    weekday: "long", year: "numeric", month: "long", day: "numeric",
+  return dateFromKey(key).toLocaleDateString("en-US", {
+    weekday: "long", month: "long", day: "numeric", year: "numeric",
   });
 }
 
@@ -46,13 +46,28 @@ function moveDate(key, amount) {
 
 function CalendarTradeRow({ trade, onViewTrade, onEditTrade, onDeleteTrade }) {
   const pnl = Number.isFinite(Number(trade.pnl)) ? Number(trade.pnl) : 0;
+  const strategyVersion = trade.versionNumber
+    ?? trade.strategyVersionNumber
+    ?? trade.strategyVersion?.version;
+  const details = [
+    trade.session,
+    [trade.strategy, strategyVersion ? `v${strategyVersion}` : ""].filter(Boolean).join(" "),
+    trade.time,
+  ].filter(Boolean);
   return (
     <article className="journal-day-trade">
-      <div className="journal-day-trade-main">
-        <strong>{trade.asset || "Unspecified asset"}</strong>
-        <span>{[trade.direction, trade.session, trade.strategy].filter(Boolean).join(" · ") || "Trade details not recorded"}</span>
-        <span className={pnl > 0 ? "pnl-positive" : pnl < 0 ? "pnl-negative" : ""}>{fullMoney(pnl)}</span>
+      <div className="journal-day-trade-content">
+        <div className="journal-day-trade-title">
+          <strong>{trade.asset || "Unspecified asset"}</strong>
+          {trade.direction && <span className={`journal-direction-badge ${trade.direction.toLowerCase()}`}>{trade.direction}</span>}
+        </div>
+        <p className="journal-day-trade-details">{details.length ? details.join(" · ") : "Trade details not recorded"}</p>
+        <div className="journal-day-trade-badges">
+          {trade.tradeQuality && <span className={`journal-quality-badge ${trade.tradeQuality === "Emotional / Rule Break" ? "emotional" : ""}`}>{trade.tradeQuality}</span>}
+          {trade.ruleBreak && <span className="journal-rule-break-badge">Rule break</span>}
+        </div>
       </div>
+      <strong className={`journal-day-trade-pnl ${pnl > 0 ? "positive" : pnl < 0 ? "negative" : ""}`}>{fullMoney(pnl)}</strong>
       <div className="journal-day-trade-actions">
         <button type="button" onClick={() => onViewTrade(trade)}>View</button>
         <button type="button" onClick={() => onEditTrade(trade)}>Edit</button>
@@ -62,7 +77,7 @@ function CalendarTradeRow({ trade, onViewTrade, onEditTrade, onDeleteTrade }) {
   );
 }
 
-function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDeleteTrade }) {
+function JournalCalendar({ trades, loading = false, onAddTrade, onViewTrade, onEditTrade, onDeleteTrade }) {
   const today = localDateKey(new Date());
   const [monthDate, setMonthDate] = useState(() => {
     const now = new Date();
@@ -70,6 +85,7 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
   });
   const [selectedDate, setSelectedDate] = useState("");
   const [focusedDate, setFocusedDate] = useState("");
+  const [monthChanging, setMonthChanging] = useState(false);
   const dayButtonRefs = useRef(new Map());
   const year = monthDate.getFullYear();
   const month = monthDate.getMonth();
@@ -87,11 +103,18 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
   const weekTotals = Array.from({ length: 6 }, (_, week) => weeklyStats(
     grid.slice(week * 7, (week + 1) * 7).map((cell) => ({ trades: byDate[cell.date] || [] })),
   ));
+  const showLoading = loading || monthChanging;
+
+  useEffect(() => {
+    if (!monthChanging) return undefined;
+    const timer = window.setTimeout(() => setMonthChanging(false), 360);
+    return () => window.clearTimeout(timer);
+  }, [monthChanging, monthDate]);
 
   useEffect(() => {
     if (!focusedDate) return;
     dayButtonRefs.current.get(focusedDate)?.focus();
-  }, [focusedDate, monthDate]);
+  }, [focusedDate, monthDate, showLoading]);
 
   useEffect(() => {
     if (!selectedDate) return undefined;
@@ -102,10 +125,15 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [selectedDate]);
 
+  function navigateToMonth(next, nextFocusedDate) {
+    setMonthChanging(true);
+    setMonthDate(new Date(next.getFullYear(), next.getMonth(), 1));
+    setFocusedDate(nextFocusedDate);
+  }
+
   function changeMonth(offset) {
     const next = new Date(year, month + offset, 1);
-    setMonthDate(next);
-    setFocusedDate(localDateKey(next));
+    navigateToMonth(next, localDateKey(next));
   }
 
   function handleDayKeyDown(event, date) {
@@ -116,7 +144,8 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
     const nextDate = moveDate(date, offset);
     const next = dateFromKey(nextDate);
     if (next.getMonth() !== month || next.getFullYear() !== year) {
-      setMonthDate(new Date(next.getFullYear(), next.getMonth(), 1));
+      navigateToMonth(next, nextDate);
+      return;
     }
     setFocusedDate(nextDate);
   }
@@ -133,8 +162,7 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
           <button type="button" onClick={() => {
             const now = new Date();
             const first = new Date(now.getFullYear(), now.getMonth(), 1);
-            setMonthDate(first);
-            setFocusedDate(today);
+            navigateToMonth(first, today);
           }}>Today</button>
           <button type="button" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button>
           <button type="button" aria-label="Next month" onClick={() => changeMonth(1)}>›</button>
@@ -162,12 +190,25 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
         <p className="journal-calendar-empty-month" role="status">No matching trades in {monthLabel}. Try another month or adjust your filters.</p>
       )}
 
-      <div className="journal-calendar-grid" role="grid" aria-label={monthLabel} aria-colcount="8">
+      <div className={`journal-calendar-grid ${showLoading ? "is-loading" : ""}`} role="grid" aria-label={monthLabel} aria-colcount="8" aria-busy={showLoading}>
         <div className="journal-calendar-week-row journal-calendar-weekday-row" role="row">
           {WEEKDAYS.map((weekday) => <div className="journal-calendar-weekday" role="columnheader" key={weekday}>{weekday}</div>)}
           <div className="journal-calendar-weekday journal-calendar-week-label" role="columnheader">Week</div>
         </div>
-        {Array.from({ length: 6 }, (_, week) => (
+        {showLoading ? Array.from({ length: 6 }, (_, week) => (
+          <div className="journal-calendar-week-row journal-calendar-skeleton-row" role="row" key={`skeleton-${week}`}>
+            {Array.from({ length: 7 }, (_, day) => (
+              <div
+                className="journal-calendar-skeleton-cell"
+                role="gridcell"
+                aria-label="Loading calendar day"
+                key={`skeleton-${week}-${day}`}
+                style={{ "--skeleton-delay": `${week * 40 + day * 8}ms` }}
+              />
+            ))}
+            <div className="journal-calendar-week-total journal-calendar-skeleton-week" aria-hidden="true" />
+          </div>
+        )) : Array.from({ length: 6 }, (_, week) => (
           <div className="journal-calendar-week-row" role="row" key={`week-${week}`}>
             {grid.slice(week * 7, (week + 1) * 7).map((cell) => {
           const stats = dayStats(byDate[cell.date] || []);
@@ -189,6 +230,7 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
               className={classes}
               key={cell.date}
               data-date={cell.date}
+              style={{ "--row-delay": `${week * 40}ms` }}
               ref={(element) => {
                 if (element) dayButtonRefs.current.set(cell.date, element);
                 else dayButtonRefs.current.delete(cell.date);
@@ -241,9 +283,9 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
               <div>
                 <p className="eyebrow">DAY REVIEW</p>
                 <h2 id="journal-day-title">{readableDate(selectedDate)}</h2>
-                <p>{selectedTrades.length} {selectedTrades.length === 1 ? "trade" : "trades"} · <strong className={dayStats(selectedTrades).netPnl > 0 ? "pnl-positive" : dayStats(selectedTrades).netPnl < 0 ? "pnl-negative" : ""}>{fullMoney(dayStats(selectedTrades).netPnl)}</strong></p>
+                <p className="journal-day-panel-summary"><strong className={dayStats(selectedTrades).netPnl > 0 ? "positive" : dayStats(selectedTrades).netPnl < 0 ? "negative" : ""}>{fullMoney(dayStats(selectedTrades).netPnl)}</strong><span>{selectedTrades.length} {selectedTrades.length === 1 ? "trade" : "trades"}</span></p>
               </div>
-              <button type="button" aria-label="Close day panel" onClick={() => setSelectedDate("")}>×</button>
+              <button type="button" className="journal-day-panel-close" aria-label="Close day panel" onClick={() => setSelectedDate("")}>×</button>
             </header>
             <div className="journal-day-panel-content">
               {selectedTrades.length ? selectedTrades.map((trade) => (
@@ -258,7 +300,9 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
                     setSelectedDate("");
                     onEditTrade(selectedTrade);
                   }}
-                  onDeleteTrade={onDeleteTrade}
+                  onDeleteTrade={(tradeId) => {
+                    onDeleteTrade(tradeId);
+                  }}
                 />
               )) : (
                 <div className="journal-day-empty">

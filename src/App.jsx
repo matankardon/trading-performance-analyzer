@@ -86,7 +86,6 @@ function App() {
   const [savingTrade, setSavingTrade] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
 
-  const [searchTerm, setSearchTerm] = useState("");
   const [assetFilter, setAssetFilter] = useState("All");
   const [strategyFilter, setStrategyFilter] = useState("All");
   const [sessionFilter, setSessionFilter] = useState("All");
@@ -914,36 +913,6 @@ function App() {
     useMemo(() => {
       return trades.filter(
         (trade) => {
-          const search =
-            searchTerm
-              .trim()
-              .toLowerCase();
-
-          const matchesSearch =
-            !search ||
-            String(
-              trade.asset || ""
-            )
-              .toLowerCase()
-              .includes(
-                search
-              ) ||
-            String(
-              trade.strategy ||
-                ""
-            )
-              .toLowerCase()
-              .includes(
-                search
-              ) ||
-            String(
-              trade.notes || ""
-            )
-              .toLowerCase()
-              .includes(
-                search
-              );
-
           const matchesAsset =
             assetFilter ===
               "All" ||
@@ -987,7 +956,6 @@ function App() {
               qualityFilter;
 
           return (
-            matchesSearch &&
             matchesAsset &&
             matchesStrategy &&
             matchesSession &&
@@ -998,7 +966,6 @@ function App() {
       );
     }, [
       trades,
-      searchTerm,
       assetFilter,
       strategyFilter,
       sessionFilter,
@@ -1007,7 +974,6 @@ function App() {
     ]);
 
   function resetFilters() {
-    setSearchTerm("");
     setAssetFilter("All");
     setStrategyFilter("All");
     setSessionFilter("All");
@@ -1134,21 +1100,6 @@ function App() {
           </div>
 
           <div className="journal-filters-container">
-            <div className="trade-search">
-              <input
-                type="text"
-                placeholder="Search asset, strategy or notes..."
-                value={
-                  searchTerm
-                }
-                onChange={(e) =>
-                  setSearchTerm(
-                    e.target.value
-                  )
-                }
-              />
-            </div>
-
             <div className="journal-filters-grid">
               <select
                 value={
@@ -1314,17 +1265,14 @@ function App() {
             </div>
           </div>
 
-          {loadingTrades ? (
-            <div className="journal-empty"><h3>Loading your trades...</h3></div>
-          ) : (
-            <JournalCalendar
-              trades={filteredTrades}
-              onAddTrade={openAddTrade}
-              onViewTrade={setSelectedTrade}
-              onEditTrade={openEditTrade}
-              onDeleteTrade={deleteTrade}
-            />
-          )}
+          <JournalCalendar
+            trades={filteredTrades}
+            loading={loadingTrades}
+            onAddTrade={openAddTrade}
+            onViewTrade={setSelectedTrade}
+            onEditTrade={openEditTrade}
+            onDeleteTrade={deleteTrade}
+          />
         </div>
       </>
     );
