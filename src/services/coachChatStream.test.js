@@ -23,6 +23,19 @@ describe("OpenAI SSE response parsing", () => {
     expect(updates).toEqual(["Hello", "Hello world"]);
   });
 
+  it("parses OpenAI chat-completions SSE fixture framing through [DONE]", async () => {
+    const updates = [];
+    const stream = streamOf([
+      'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1720000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1720000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"Coaching"},"finish_reason":null}]}\n\n',
+      'data: {"id":"chatcmpl-test","object":"chat.completion.chunk","created":1720000000,"model":"gpt-4o-mini","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n',
+      "data: [DONE]\n\n",
+    ]);
+    await expect(readOpenAiSseStream(stream, (reply) => updates.push(reply)))
+      .resolves.toEqual({ reply: "Coaching", stopped: false });
+    expect(updates).toEqual(["Coaching"]);
+  });
+
   it("returns generated text as a partial reply when stopped", async () => {
     const controller = new AbortController();
     let enqueueToken;

@@ -326,6 +326,9 @@ function CoachingChat({ trades = [], strategyLibrary = [] }) {
       });
       const reply = typeof result === "string" ? result : result.reply;
       const stopped = typeof result === "object" && result.stopped === true;
+      if (!stopped && (typeof reply !== "string" || !reply.trim())) {
+        throw new Error("Coach returned an empty reply. Retry.");
+      }
       const replyContent = stopped && reply
         ? `${reply}\n\n> _Partial response — stopped by you._`
         : reply;

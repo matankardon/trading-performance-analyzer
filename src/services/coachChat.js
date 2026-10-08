@@ -1,5 +1,6 @@
 import { supabase } from "../supabaseClient";
 import { readOpenAiSseStream } from "./coachChatStream";
+import { EMPTY_COACH_REPLY_ERROR, requestWithStreamFallback } from "./coachReplyFallback";
 
 function readableFunctionError(error) {
   return error?.detail || error?.error || error?.message || "Coach request failed. Please try again.";
@@ -129,7 +130,7 @@ async function requestCoachReplyLegacy(message, history, context) {
   if (!accessToken) throw new Error("A valid Supabase access token is required. Please sign in again.");
 
   const { data, error } = await supabase.functions.invoke("coach-chat", {
-    body: { message, history: history.slice(-20), context },
+    body: { mode: "complete", message, history: history.slice(-20), context },
     headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (error) {
@@ -144,7 +145,8 @@ async function requestCoachReplyLegacy(message, history, context) {
   if (typeof data?.reply !== "string" || data.ok !== true) {
     throw new Error(data?.error || "Coach returned an incomplete reply.");
   }
-  return data.reply;
+  if (!data.reply.trim()) throw new Error(EMPTY_COACH_REPLY_ERROR);
+  return data.reply.trim();
 }
 
 class CoachHttpError extends Error {
@@ -160,7 +162,9 @@ export async function requestCoachReply(message, history, context, { signal, onT
   const accessToken = sessionData.session?.access_token;
   if (!accessToken) throw new Error("A valid Supabase access token is required. Please sign in again.");
 
-  let shouldFallback;
+  let responseStatus = null;
+  let responseContentType = "unavailable";
+  let shouldFallback = false;
   try {
     const url = import.meta.env.VITE_SUPABASE_URL;
     const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -175,6 +179,8 @@ export async function requestCoachReply(message, history, context, { signal, onT
       },
       body: JSON.stringify({ mode: "stream", message, history: history.slice(-20), context }),
     });
+    responseStatus = response.status;
+    responseContentType = response.headers.get("Content-Type") || "missing";
 
     if (!response.ok) {
       let data;
@@ -187,20 +193,28 @@ export async function requestCoachReply(message, history, context, { signal, onT
       if (response.status < 500) throw new CoachHttpError(messageText, response.status);
       shouldFallback = true;
     } else if (response.headers.get("Content-Type")?.includes("text/event-stream")) {
-      try {
-        return await readOpenAiSseStream(response.body, onToken, signal);
-      } catch {
-        if (signal?.aborted) return { reply: "", stopped: true };
-        shouldFallback = true;
-      }
+      return await requestWithStreamFallback({
+        streamRequest: () => readOpenAiSseStream(response.body, onToken, signal),
+        completeRequest: () => requestCoachReplyLegacy(message, history, context),
+        onFallback: () => {
+          console.error("Coach streaming fallback", {
+            status: responseStatus,
+            contentType: responseContentType,
+          });
+          onToken("");
+        },
+      });
     } else {
       const data = await response.json();
       if (data?.ok === true && typeof data.reply === "string") {
-        onToken(data.reply);
-        return { reply: data.reply, stopped: false };
+        if (data.reply.trim()) {
+          onToken(data.reply.trim());
+          return { reply: data.reply.trim(), stopped: false };
+        }
+        shouldFallback = true;
       }
       if (response.status === 429) throw new CoachHttpError(data?.error || "Coach rate limit reached. Try again later.", 429);
-      shouldFallback = true;
+      if (!shouldFallback) shouldFallback = true;
     }
   } catch (error) {
     if (signal?.aborted) return { reply: "", stopped: true };
@@ -209,6 +223,10 @@ export async function requestCoachReply(message, history, context, { signal, onT
   }
 
   if (shouldFallback) {
+    console.error("Coach streaming fallback", {
+      status: responseStatus,
+      contentType: responseContentType,
+    });
     onToken("");
     const reply = await requestCoachReplyLegacy(message, history, context);
     onToken(reply);

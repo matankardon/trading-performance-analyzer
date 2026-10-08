@@ -50,6 +50,7 @@ describe("coach chat request validation", () => {
   it("accepts the context builder output and bounded message history", () => {
     expect(isValidCoachChatRequest(request())).toBe(true);
     expect(isValidCoachChatRequest(request({ mode: "stream" }))).toBe(true);
+    expect(isValidCoachChatRequest(request({ mode: "complete" }))).toBe(true);
     expect(isValidCoachChatRequest(request({ mode: "title" }))).toBe(true);
     expect(isValidCoachChatRequest(request({ mode: "admin" }))).toBe(false);
   });

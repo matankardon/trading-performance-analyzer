@@ -144,6 +144,17 @@ describe("Coaching chat", () => {
       .toHaveTextContent("Coach limit reached: 30 requests per hour. Please try again later.");
   });
 
+  it("shows an empty-reply error with retry and never persists empty assistant content", async () => {
+    requestCoachReply.mockResolvedValue({ reply: " \n ", stopped: false });
+    await renderReadyChat();
+    fireEvent.click(screen.getByRole("button", { name: "Which setups work best for me?" }));
+    expect(await screen.findByRole("alert"))
+      .toHaveTextContent("Coach returned an empty reply. Retry.");
+    expect(screen.getByRole("button", { name: "Retry" })).toBeInTheDocument();
+    expect(saveCoachAssistantReply).not.toHaveBeenCalled();
+    expect(document.querySelector(".coach-message-assistant")).not.toBeInTheDocument();
+  });
+
   it("sends the complete strategy comparison request from its chip", async () => {
     requestCoachReply.mockResolvedValue("Strategy comparison details.");
     await renderReadyChat();
