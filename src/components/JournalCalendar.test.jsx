@@ -15,6 +15,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function renderCalendar(trades = tradeSet) {
@@ -36,6 +37,19 @@ describe("JournalCalendar", () => {
     expect(winDay).toHaveClass("status-win");
     expect(lossDay).toHaveClass("status-loss");
     expect(within(winDay).getByText("+$120")).toBeInTheDocument();
+    expect(screen.getByRole("gridcell", { name: "Week 2, 2 trades, net +$120.00" })).toBeInTheDocument();
+  });
+
+  it("assigns flat-day styling and always renders the English month title", () => {
+    const originalToLocaleString = Date.prototype.toLocaleString;
+    vi.spyOn(Date.prototype, "toLocaleString").mockImplementation(function toLocaleString(locale, ...args) {
+      return locale === "en-US"
+        ? originalToLocaleString.call(this, locale, ...args)
+        : "אוקטובר 2026";
+    });
+    renderCalendar([{ id: "flat", date: "2026-10-09", pnl: 0 }]);
+    expect(screen.getByRole("heading", { name: "October 2026" })).toBeInTheDocument();
+    expect(screen.getByRole("gridcell", { name: "Oct 9, 1 trade, net $0.00" })).toHaveClass("status-flat");
   });
 
   it("opens the selected day's panel with only that day's trades", () => {

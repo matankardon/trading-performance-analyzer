@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { buildMonthGrid, dayStats, groupTradesByDay, monthStats, WEEK_START } from "../services/journalCalendar";
+import { buildMonthGrid, dayStats, groupTradesByDay, monthStats, WEEK_START, weeklyStats } from "../services/journalCalendar";
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const CURRENCY_FORMAT = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 
 function compactMoney(value, digits = 0) {
   const amount = Math.abs(value);
   const compact = amount >= 1000
-    ? `${(amount / 1000).toFixed(amount >= 10_000 ? 0 : 1).replace(/\.0$/, "")}k`
-    : amount.toFixed(digits);
+    ? amount >= 10_000
+      ? `${(amount / 1000).toFixed(1).replace(/\.0$/, "")}k`
+      : amount.toLocaleString("en-US", { maximumFractionDigits: digits })
+    : amount.toLocaleString("en-US", { maximumFractionDigits: digits });
   return `${value > 0 ? "+" : value < 0 ? "-" : ""}$${compact}`;
 }
 
 function fullMoney(value) {
-  return `${value > 0 ? "+" : value < 0 ? "-" : ""}$${Math.abs(value).toFixed(2)}`;
+  return `${value > 0 ? "+" : value < 0 ? "-" : ""}${CURRENCY_FORMAT.format(Math.abs(value))}`;
 }
 
 function localDateKey(date) {
@@ -73,9 +81,12 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
     ...dayStats(dayTrades),
   })), [byDate]);
   const summary = monthStats(days.filter((day) => day.date.startsWith(`${year}-${String(month + 1).padStart(2, "0")}-`)));
-  const monthLabel = monthDate.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+  const monthLabel = monthDate.toLocaleString("en-US", { month: "long", year: "numeric" });
   const selectedTrades = selectedDate ? byDate[selectedDate] || [] : [];
   const monthHasMatches = days.some((day) => day.date.startsWith(`${year}-${String(month + 1).padStart(2, "0")}-`));
+  const weekTotals = Array.from({ length: 6 }, (_, week) => weeklyStats(
+    grid.slice(week * 7, (week + 1) * 7).map((cell) => ({ trades: byDate[cell.date] || [] })),
+  ));
 
   useEffect(() => {
     if (!focusedDate) return;
@@ -111,36 +122,34 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
   }
 
   function dayLabel(cell, stats) {
-    const monthName = dateFromKey(cell.date).toLocaleDateString(undefined, { month: "short" });
+    const monthName = dateFromKey(cell.date).toLocaleString("en-US", { month: "short" });
     return `${monthName} ${cell.day}, ${stats.count} ${stats.count === 1 ? "trade" : "trades"}, net ${fullMoney(stats.netPnl)}`;
   }
 
   return (
     <section className="journal-calendar" aria-label="Trade journal calendar">
-      <div className="journal-calendar-summary" aria-label={`${monthLabel} summary`}>
-        <div><span>Month net P&amp;L</span><strong className={summary.netPnl > 0 ? "pnl-positive" : summary.netPnl < 0 ? "pnl-negative" : ""}>{fullMoney(summary.netPnl)}</strong></div>
-        <div><span>Trading days</span><strong>{summary.tradingDays}</strong></div>
-        <div><span>Green / red days</span><strong><i className="journal-positive-text">{summary.greenDays}</i> / <i className="journal-negative-text">{summary.redDays}</i></strong></div>
-        <div><span>Win-day rate</span><strong>{summary.winDayRate.toFixed(0)}%</strong></div>
-        <div><span>Best day</span><strong>{summary.bestDay ? `${summary.bestDay.date.slice(-2)} · ${compactMoney(summary.bestDay.netPnl, 2)}` : "—"}</strong></div>
-        <div><span>Worst day</span><strong>{summary.worstDay ? `${summary.worstDay.date.slice(-2)} · ${compactMoney(summary.worstDay.netPnl, 2)}` : "—"}</strong></div>
-      </div>
-
       <div className="journal-calendar-heading">
-        <div>
-          <p className="eyebrow">DAILY PERFORMANCE</p>
-          <h2>{monthLabel}</h2>
-        </div>
-        <div className="journal-calendar-navigation" aria-label="Calendar navigation">
-          <button type="button" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button>
+        <div className="journal-calendar-controls">
           <button type="button" onClick={() => {
             const now = new Date();
             const first = new Date(now.getFullYear(), now.getMonth(), 1);
             setMonthDate(first);
             setFocusedDate(today);
           }}>Today</button>
+          <button type="button" aria-label="Previous month" onClick={() => changeMonth(-1)}>‹</button>
           <button type="button" aria-label="Next month" onClick={() => changeMonth(1)}>›</button>
         </div>
+        <h2>{monthLabel}</h2>
+        <strong className={`journal-calendar-net-pill ${summary.netPnl >= 0 ? "positive" : "negative"}`}>{fullMoney(summary.netPnl)}</strong>
+      </div>
+
+      <div className="journal-calendar-summary" aria-label={`${monthLabel} summary`}>
+        <div><span>Net P&amp;L</span><strong className={summary.netPnl > 0 ? "pnl-positive" : summary.netPnl < 0 ? "pnl-negative" : ""}>{fullMoney(summary.netPnl)}</strong></div>
+        <div><span>Trading days</span><strong>{summary.tradingDays}</strong></div>
+        <div><span>Green / red days</span><strong><i className="journal-positive-text">{summary.greenDays}</i> / <i className="journal-negative-text">{summary.redDays}</i></strong></div>
+        <div><span>Win-day rate</span><strong>{summary.winDayRate.toFixed(0)}%</strong></div>
+        <div><span>Best day</span><strong>{summary.bestDay ? `${summary.bestDay.date.slice(-2)} · ${fullMoney(summary.bestDay.netPnl)}` : "—"}</strong></div>
+        <div><span>Worst day</span><strong>{summary.worstDay ? `${summary.worstDay.date.slice(-2)} · ${fullMoney(summary.worstDay.netPnl)}` : "—"}</strong></div>
       </div>
 
       <div className="journal-calendar-legend" aria-label="Day result legend">
@@ -149,19 +158,14 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
         <span><i className="legend-flat" /> Flat</span>
       </div>
 
-      {missingDateCount > 0 && (
-        <p className="journal-calendar-missing" role="status">
-          {missingDateCount} {missingDateCount === 1 ? "trade has" : "trades have"} no valid recorded date and {missingDateCount === 1 ? "is" : "are"} excluded from the calendar.
-        </p>
-      )}
-
       {!monthHasMatches && trades.length > 0 && (
         <p className="journal-calendar-empty-month" role="status">No matching trades in {monthLabel}. Try another month or adjust your filters.</p>
       )}
 
-      <div className="journal-calendar-grid" role="grid" aria-label={monthLabel} aria-colcount="7">
+      <div className="journal-calendar-grid" role="grid" aria-label={monthLabel} aria-colcount="8">
         <div className="journal-calendar-week-row journal-calendar-weekday-row" role="row">
           {WEEKDAYS.map((weekday) => <div className="journal-calendar-weekday" role="columnheader" key={weekday}>{weekday}</div>)}
+          <div className="journal-calendar-weekday journal-calendar-week-label" role="columnheader">Week</div>
         </div>
         {Array.from({ length: 6 }, (_, week) => (
           <div className="journal-calendar-week-row" role="row" key={`week-${week}`}>
@@ -202,12 +206,31 @@ function JournalCalendar({ trades, onAddTrade, onViewTrade, onEditTrade, onDelet
                   <span className="journal-calendar-count">{stats.count} {stats.count === 1 ? "trade" : "trades"}</span>
                 </>
               )}
+              {stats.count > 0 && (
+                <span className="journal-calendar-tags">
+                  {[...new Set((byDate[cell.date] || []).map((trade) => trade.strategy || trade.asset).filter(Boolean))]
+                    .slice(0, 2)
+                    .map((tag) => <span className="journal-calendar-tag" key={tag}>{tag}</span>)}
+                  {[...new Set((byDate[cell.date] || []).map((trade) => trade.strategy || trade.asset).filter(Boolean))].length > 2
+                    && <span className="journal-calendar-tag-more">+{[...new Set((byDate[cell.date] || []).map((trade) => trade.strategy || trade.asset).filter(Boolean))].length - 2} more</span>}
+                </span>
+              )}
             </button>
           );
             })}
+            <div className="journal-calendar-week-total" role="gridcell" aria-label={`Week ${week + 1}, ${weekTotals[week].count} trades, net ${fullMoney(weekTotals[week].netPnl)}`}>
+              <span>Week {week + 1}</span>
+              <strong className={weekTotals[week].netPnl > 0 ? "pnl-positive" : weekTotals[week].netPnl < 0 ? "pnl-negative" : ""}>{fullMoney(weekTotals[week].netPnl)}</strong>
+              <small>{weekTotals[week].count} trades</small>
+            </div>
           </div>
         ))}
       </div>
+      {missingDateCount > 0 && (
+        <p className="journal-calendar-missing" role="status">
+          {missingDateCount} {missingDateCount === 1 ? "trade has" : "trades have"} no valid recorded date and {missingDateCount === 1 ? "is" : "are"} excluded from the calendar.
+        </p>
+      )}
 
       {selectedDate && (
         <div className="journal-day-backdrop" role="presentation" onMouseDown={(event) => {

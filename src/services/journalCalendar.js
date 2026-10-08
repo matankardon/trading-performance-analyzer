@@ -67,6 +67,18 @@ export function monthStats(days = []) {
   };
 }
 
+export function weeklyStats(days = []) {
+  const stats = days.map((day) => (Array.isArray(day?.trades) ? dayStats(day.trades) : {
+    count: Number(day?.count) || 0,
+    netPnl: Number.isFinite(Number(day?.netPnl)) ? Number(day.netPnl) : 0,
+  }));
+  const netPnl = stats.reduce((sum, day) => sum + day.netPnl, 0);
+  return {
+    netPnl: Number.isFinite(netPnl) ? netPnl : 0,
+    count: stats.reduce((sum, day) => sum + day.count, 0),
+  };
+}
+
 function dateKey(date) {
   const year = String(date.getFullYear()).padStart(4, "0");
   const month = String(date.getMonth() + 1).padStart(2, "0");

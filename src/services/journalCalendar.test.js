@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildMonthGrid, dayStats, groupTradesByDay, monthStats, WEEK_START } from "./journalCalendar";
+import { buildMonthGrid, dayStats, groupTradesByDay, monthStats, WEEK_START, weeklyStats } from "./journalCalendar";
 
 describe("journal calendar calculations", () => {
   it("groups by stored date string without timezone parsing and counts invalid or missing dates", () => {
@@ -43,6 +43,15 @@ describe("journal calendar calculations", () => {
     expect(monthStats([])).toMatchObject({
       netPnl: 0, tradingDays: 0, greenDays: 0, redDays: 0, winDayRate: 0, bestDay: null, worstDay: null,
     });
+  });
+
+  it("calculates weekly P&L and trade count, including an empty week", () => {
+    expect(weeklyStats([
+      { trades: [{ pnl: 150 }, { pnl: -30 }] },
+      { trades: [{ pnl: -85 }] },
+    ])).toEqual({ netPnl: 35, count: 3 });
+    expect(weeklyStats([])).toEqual({ netPnl: 0, count: 0 });
+    expect(weeklyStats([{ trades: [] }])).toEqual({ netPnl: 0, count: 0 });
   });
 
   it("builds six Sunday-first weeks for all month lengths, including leap February", () => {
