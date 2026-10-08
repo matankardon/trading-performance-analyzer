@@ -501,68 +501,6 @@ nav {
 }
 
 /* ================================
-   JOURNAL CONTROLS
-================================ */
-
-.journal-controls {
-  display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) repeat(5, minmax(120px, 1fr)) auto;
-  gap: 8px;
-  margin-bottom: 18px;
-  padding: 12px;
-  background: #fafbfc;
-  border: 1px solid #edf0f3;
-  border-radius: 9px;
-}
-
-.search-box {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: white;
-  border: 1px solid #dfe4ea;
-  border-radius: 7px;
-  padding: 0 10px;
-}
-
-.search-box span {
-  color: #8a94a4;
-  font-size: 18px;
-}
-
-.search-box input {
-  width: 100%;
-  border: none;
-  outline: none;
-  background: transparent;
-  padding: 8px 2px;
-  color: #374151;
-}
-
-.journal-controls select {
-  min-width: 0;
-  border: 1px solid #dfe4ea;
-  background: white;
-  padding: 8px 9px;
-  border-radius: 7px;
-  color: #596273;
-  outline: none;
-}
-
-.reset-filter-btn {
-  border: 1px solid #d8dde5;
-  background: white;
-  color: #596273;
-  border-radius: 7px;
-  padding: 8px 11px;
-  font-size: 12px;
-}
-
-.reset-filter-btn:hover {
-  background: #f1f3f6;
-}
-
-/* ================================
    TABLE
 ================================ */
 
@@ -6053,20 +5991,6 @@ nav {
    RESPONSIVE
 ================================ */
 
-@media (max-width: 1250px) {
-  .journal-controls {
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .search-box {
-    grid-column: 1 / -1;
-  }
-
-  .reset-filter-btn {
-    grid-column: span 1;
-  }
-}
-
 @media (max-width: 1100px) {
   .sidebar {
     width: 210px;
@@ -6148,13 +6072,6 @@ nav {
     grid-template-columns: 1fr;
   }
 
-  .journal-controls {
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .search-box {
-    grid-column: 1 / -1;
-  }
 }
 
 @media (max-width: 500px) {
@@ -6173,14 +6090,6 @@ nav {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
-  }
-
-  .journal-controls {
-    grid-template-columns: 1fr;
-  }
-
-  .search-box {
-    grid-column: auto;
   }
 
   .details-grid {
@@ -6207,35 +6116,8 @@ nav {
   min-width: 0;
 }
 
-.journal-filters {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  max-width: 100%;
-  flex-wrap: wrap;
-}
-
-.journal-filters input,
-.journal-filters select,
-.journal-filters button {
-  max-width: 100%;
-  min-width: 0;
-}
-
 @media (max-width: 700px) {
   .journal-toolbar {
-    width: 100%;
-  }
-
-  .journal-filters {
-    width: 100%;
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .journal-filters input,
-  .journal-filters select,
-  .journal-filters button {
     width: 100%;
   }
 }
@@ -6962,56 +6844,6 @@ nav {
     font-size: 32px;
   }
 }
-/* =========================================
-   TRADE JOURNAL V2
-========================================= */
-
-.journal-filters-container {
-  margin-bottom: 22px;
-  padding: 16px;
-  background: #f8f9fb;
-  border: 1px solid #e8ebef;
-  border-radius: 10px;
-}
-
-.journal-filters-grid {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 8px;
-}
-
-.journal-filters-grid select {
-  width: 100%;
-  min-width: 0;
-  height: 38px;
-  padding: 0 9px;
-  border: 1px solid #dfe4ea;
-  border-radius: 7px;
-  background: white;
-  color: #4b5563;
-  outline: none;
-}
-
-.reset-filter-btn {
-  height: 38px;
-  border: 1px solid #d9dee5;
-  border-radius: 7px;
-  background: white;
-  color: #4b5563;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.reset-filter-btn:hover {
-  background: #f0f2f5;
-}
-
-.filter-results {
-  margin-top: 12px;
-  color: #8a94a4;
-  font-size: 11px;
-}
-
 .trade-actions {
   display: flex;
   gap: 5px;
@@ -7210,20 +7042,12 @@ nav {
 ========================================= */
 
 @media (max-width: 1100px) {
-  .journal-filters-grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .trade-detail-grid {
     grid-template-columns: repeat(2, 1fr);
   }
 }
 
 @media (max-width: 700px) {
-  .journal-filters-grid {
-    grid-template-columns: 1fr;
-  }
-
   .detail-checklist {
     grid-template-columns: 1fr;
   }
@@ -8037,7 +7861,7 @@ body::before {
 }
 
 .secondary-btn,
-.reset-filter-btn,
+
 .cancel-btn {
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -8047,7 +7871,7 @@ body::before {
 }
 
 .secondary-btn:hover,
-.reset-filter-btn:hover,
+
 .cancel-btn:hover {
   border-color: #3a526d;
   background: #182638;
@@ -8178,8 +8002,6 @@ body::before {
 .placeholder-list div,
 .empty-chart,
 .notes-box,
-.journal-controls,
-.journal-filters-container,
 .analytics-no-data,
 .quality-analytics-card,
 .quality-card,
@@ -8237,9 +8059,6 @@ body::before {
   background: rgba(114, 168, 219, 0.06);
 }
 
-.search-box,
-.journal-controls select,
-.journal-filters-grid select,
 .form-field input,
 .form-field select,
 .form-field textarea,
@@ -8251,7 +8070,6 @@ body::before {
   color: var(--ink);
 }
 
-.search-box input::placeholder,
 .form-field input::placeholder,
 .form-field textarea::placeholder,
 .extraction-field input::placeholder,

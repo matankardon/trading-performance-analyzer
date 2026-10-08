@@ -110,11 +110,11 @@ describe("JournalCalendar", () => {
     expect(within(row).getByRole("button", { name: "Delete" })).toBeInTheDocument();
   });
 
-  it("aggregates only the trades supplied by active journal filters", () => {
-    renderCalendar([tradeSet[0]]);
-    const filteredDay = screen.getByRole("gridcell", { name: "Oct 8, 1 trade, net +$150.00" });
-    expect(filteredDay).toHaveClass("status-win");
-    expect(screen.queryByRole("gridcell", { name: "Oct 8, 2 trades, net +$120.00" })).not.toBeInTheDocument();
+  it("aggregates all trades supplied to the calendar", () => {
+    renderCalendar();
+    const day = screen.getByRole("gridcell", { name: "Oct 8, 2 trades, net +$120.00" });
+    expect(day).toHaveClass("status-win");
+    expect(screen.getByRole("gridcell", { name: "Oct 12, 1 trade, net -$85.00" })).toBeInTheDocument();
   });
 
   it("navigates months and Today returns to the current month", () => {
