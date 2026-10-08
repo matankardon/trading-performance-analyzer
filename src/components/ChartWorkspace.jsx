@@ -159,7 +159,7 @@ function makeSetupSnapshot(symbol, timeframe, trades, version) {
   });
 }
 
-function ChartCanvas({ bars, trades, showTrades, indicatorComputations, onViewTrade, onCrosshair }) {
+function ChartCanvas({ bars, trades, showTrades, focusTradeDate, indicatorComputations, onViewTrade, onCrosshair }) {
   const chartHost = useRef(null);
   const indicatorHosts = useRef(new Map());
   const savedRange = useRef({ key: "", range: null });
@@ -349,7 +349,15 @@ function ChartCanvas({ bars, trades, showTrades, indicatorComputations, onViewTr
       lowerChart.timeScale().fitContent();
     });
     const timeScale = chart.timeScale();
-    if (savedRange.current.key === dataRangeKey && savedRange.current.range) {
+    const focusIndex = focusTradeDate
+      ? bars.findIndex((bar) => new Date(bar.timestamp).toISOString().slice(0, 10) === focusTradeDate)
+      : -1;
+    if (focusIndex >= 0) {
+      timeScale.setVisibleLogicalRange({
+        from: Math.max(-1, focusIndex - 15),
+        to: Math.min(bars.length, focusIndex + 15),
+      });
+    } else if (savedRange.current.key === dataRangeKey && savedRange.current.range) {
       timeScale.setVisibleLogicalRange(savedRange.current.range);
     } else {
       timeScale.fitContent();
@@ -394,7 +402,7 @@ function ChartCanvas({ bars, trades, showTrades, indicatorComputations, onViewTr
       lowerCharts.forEach((lowerChart) => lowerChart.remove());
       chart.remove();
     };
-  }, [bars, dataRangeKey, indicatorComputations, lowerIndicators, onCrosshair, onViewTrade, showTrades, trades]);
+  }, [bars, dataRangeKey, focusTradeDate, indicatorComputations, lowerIndicators, onCrosshair, onViewTrade, showTrades, trades]);
 
   return (
     <>
@@ -443,6 +451,7 @@ export default function ChartWorkspace({
   const [showTrades, setShowTrades] = useState(true);
   const [strategyVersionId, setStrategyVersionId] = useState("");
   const [crosshair, setCrosshair] = useState(null);
+  const [focusTradeDate, setFocusTradeDate] = useState("");
   const requestId = useRef(0);
   const journalAssets = useMemo(() => {
     const counts = new Map();
@@ -534,13 +543,13 @@ export default function ChartWorkspace({
   }
 
   const barDates = new Set(bars.map((bar) => new Date(bar.timestamp).toISOString().slice(0, 10)));
-  const skippedTrades = showTrades
-    ? selectedTradeData.skippedCount + (!loading && !error
-      ? selectedTradeData.trades.filter((trade) => !barDates.has(storedDate(trade.date))).length
-      : 0)
+  const missingTradeDataCount = showTrades ? selectedTradeData.skippedCount : 0;
+  const missingBarCount = showTrades && !loading && !error
+    ? selectedTradeData.trades.filter((trade) => !barDates.has(storedDate(trade.date))).length
     : 0;
+  const skippedTrades = missingTradeDataCount + missingBarCount;
   const journaledVisibleTrades = showTrades ? selectedTradeData.trades : [];
-  const chartTradeList = showTrades ? selectedTradeData.inRangeTrades : [];
+  const chartTradeList = selectedTradeData.inRangeTrades;
   const availableIndicators = indicatorComputations;
 
   return (
@@ -565,9 +574,9 @@ export default function ChartWorkspace({
           </div>
           {crosshair && <div className="chart-crosshair-readout" aria-live="polite"><span>{crosshair.date || "--"}</span><span>O {crosshair.open?.toFixed(2) ?? "--"}</span><span>H {crosshair.high?.toFixed(2) ?? "--"}</span><span>L {crosshair.low?.toFixed(2) ?? "--"}</span><span>C {crosshair.close?.toFixed(2) ?? "--"}</span>{crosshair.trade && <span>{crosshair.trade.direction} · {finite(crosshair.trade.pnl) === null ? "P&L n/a" : `${finite(crosshair.trade.pnl) >= 0 ? "+" : "-"}$${Math.abs(finite(crosshair.trade.pnl)).toFixed(2)}`} · {crosshair.trade.strategy || "Unassigned"}{crosshair.trade.versionNumber ? ` v${crosshair.trade.versionNumber}` : ""}</span>}</div>}
           {loading ? <div className="chart-loading-shimmer" role="status">Loading historical bars…</div> : error ? <div className="chart-empty-state" role="alert"><strong>Historical data unavailable</strong><p>{error}</p><button type="button" className="secondary-btn" onClick={() => setRefreshKey((value) => value + 1)}>Retry</button></div> : bars.length === 0 ? <div className="chart-empty-state"><strong>No bars in this range</strong><p>The provider returned no historical bars for {symbol} ({timeframe}, {bounds.startDate} to {bounds.endDate}).</p></div> : (
-            <ChartCanvas bars={bars} trades={journaledVisibleTrades} showTrades={showTrades} indicatorComputations={indicatorComputations.filter(({ output }) => output)} onViewTrade={onViewTrade} onCrosshair={setCrosshair} />
+            <ChartCanvas bars={bars} trades={journaledVisibleTrades} showTrades={showTrades} focusTradeDate={focusTradeDate} indicatorComputations={indicatorComputations.filter(({ output }) => output)} onViewTrade={onViewTrade} onCrosshair={setCrosshair} />
           )}
-          {skippedTrades > 0 && <small className="chart-muted-note">{skippedTrades} journaled {skippedTrades === 1 ? "trade was" : "trades were"} skipped because entry or exit price is missing.</small>}
+          {skippedTrades > 0 && <small className="chart-muted-note">{missingTradeDataCount > 0 && `${missingTradeDataCount} ${missingTradeDataCount === 1 ? "trade lacks" : "trades lack"} a usable date, entry, or exit. `}{missingBarCount > 0 && `${missingBarCount} ${missingBarCount === 1 ? "trade has" : "trades have"} no matching bar in this range.`}</small>}
           {availableIndicators.length > 0 && <div className="chart-indicator-status"><span>Selected version indicators</span>{availableIndicators.map(({ item, output, error: indicatorError }) => {
             const { key, label } = item;
             const rendered = key === "smaConfirmation" || key === "emaConfirmation" || key === "bollingerConfirmation" || key === "fibonacciConfirmation" || key === "ichimokuConfirmation"
@@ -586,8 +595,8 @@ export default function ChartWorkspace({
       </div>
 
       <section className="trading-workspace-card chart-trades-list">
-        <div className="chart-card-heading"><div><p className="eyebrow">JOURNAL OVERLAY</p><h2>Trades on this chart</h2></div><span>{journaledVisibleTrades.length} shown{skippedTrades ? ` · ${skippedTrades} skipped` : ""}</span></div>
-        {chartTradeList.length ? <div className="chart-trade-rows">{chartTradeList.map((trade) => <button key={trade.id} type="button" className="chart-trade-row" onClick={() => onViewTrade(trade)}><span>{trade.date} · {trade.direction}</span><strong className={(finite(trade.pnl) ?? 0) >= 0 ? "positive" : "negative"}>{finite(trade.pnl) === null ? "P&L not recorded" : `${finite(trade.pnl) >= 0 ? "+" : "-"}$${Math.abs(finite(trade.pnl)).toFixed(2)}`}</strong><small>{trade.strategy || "Unassigned"}{trade.versionNumber ? ` · v${trade.versionNumber}` : ""}</small></button>)}</div> : <p className="chart-muted-note">No journaled trades for {symbol || "this symbol"} in the selected range.</p>}
+        <div className="chart-card-heading"><div><p className="eyebrow">JOURNAL OVERLAY</p><h2>Trades on this chart</h2></div><span>{chartTradeList.length} in range{skippedTrades ? ` · ${skippedTrades} skipped` : ""}</span></div>
+        {chartTradeList.length ? <div className="chart-trade-rows">{chartTradeList.map((trade) => <button key={trade.id} type="button" className="chart-trade-row" onClick={() => { setFocusTradeDate(storedDate(trade.date)); onViewTrade(trade); }}><span>{trade.date} · {trade.direction}</span><strong className={(finite(trade.pnl) ?? 0) >= 0 ? "positive" : "negative"}>{finite(trade.pnl) === null ? "P&L not recorded" : `${finite(trade.pnl) >= 0 ? "+" : "-"}$${Math.abs(finite(trade.pnl)).toFixed(2)}`}</strong><small>{trade.strategy || "Unassigned"}{trade.versionNumber ? ` · v${trade.versionNumber}` : ""}</small></button>)}</div> : <p className="chart-muted-note">No journaled trades for {symbol || "this symbol"} in the selected range.</p>}
       </section>
       <SetupExport symbol={symbol} timeframe={timeframe} trades={journaledVisibleTrades} strategyVersion={selectedVersion?.version} />
     </div>

@@ -41,14 +41,15 @@ function sampleBars() {
 }
 
 function createMockChart() {
+  const timeScale = {
+    fitContent: vi.fn(),
+    getVisibleLogicalRange: vi.fn(() => null),
+    setVisibleLogicalRange: vi.fn(),
+  };
   const chart = {
     addSeries: vi.fn(() => series),
     priceScale: vi.fn(() => ({ applyOptions: vi.fn() })),
-    timeScale: vi.fn(() => ({
-      fitContent: vi.fn(),
-      getVisibleLogicalRange: vi.fn(() => null),
-      setVisibleLogicalRange: vi.fn(),
-    })),
+    timeScale: vi.fn(() => timeScale),
     subscribeCrosshairMove: vi.fn(),
     unsubscribeCrosshairMove: vi.fn(),
     subscribeClick: vi.fn((handler) => { chart.clickHandler = handler; }),
@@ -115,6 +116,15 @@ describe("ChartWorkspace", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "My trades" }));
     await waitFor(() => expect(markerCalls.at(-1)).toEqual([]));
     expect(screen.getByText("Trades on this chart")).toBeInTheDocument();
+  });
+
+  it("keeps the trade list visible when markers are hidden and centers on a selected trade", async () => {
+    render(<ChartWorkspace selectedAsset="AAPL" trades={[sampleTrade()]} />);
+    await waitFor(() => expect(screen.getByLabelText("Historical candlestick chart")).toBeInTheDocument());
+    fireEvent.click(screen.getByRole("checkbox", { name: "My trades" }));
+    expect(screen.getByRole("button", { name: /Momentum · v2/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Momentum · v2/ }));
+    await waitFor(() => expect(charts.at(-1).timeScale().setVisibleLogicalRange).toHaveBeenCalled());
   });
 
   it("explains an unsupported stored timeframe instead of requesting it", () => {
