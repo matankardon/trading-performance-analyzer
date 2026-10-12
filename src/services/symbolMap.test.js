@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { resolveChartSymbol, toTradingViewSymbol } from "./symbolMap";
+import {
+  readTradingViewSymbolMap,
+  resolveChartSymbol,
+  toTradingViewSymbol,
+  tradingViewSymbolAlternatives,
+  writeTradingViewSymbolMap,
+} from "./symbolMap";
 
 describe("symbolMap", () => {
   it("maps common journal names to Massive-compatible chart tickers", () => {
@@ -30,7 +36,25 @@ describe("symbolMap", () => {
     expect(toTradingViewSymbol("Random Story Stock")).toBeNull();
   });
 
+  it("returns the verified gold feed first and keeps fallback feeds in order", () => {
+    expect(tradingViewSymbolAlternatives("CFDs on Gold (US$ / OZ)")).toEqual([
+      "OANDA:XAUUSD",
+      "TVC:GOLD",
+      "FX_IDC:XAUUSD",
+    ]);
+  });
+
+  it("passes typed exchange-prefixed symbols through without changing their case", () => {
+    expect(toTradingViewSymbol("oanda:XAUUSD")).toBe("oanda:XAUUSD");
+  });
+
   it("prefers user TradingView mappings", () => {
     expect(toTradingViewSymbol("Gold", { Gold: "CUSTOM:XAUUSD" })).toBe("CUSTOM:XAUUSD");
+  });
+
+  it("persists TradingView feed preferences in local storage", () => {
+    expect(writeTradingViewSymbolMap({ Gold: "TVC:GOLD" })).toBe(true);
+    expect(readTradingViewSymbolMap()).toEqual({ Gold: "TVC:GOLD" });
+    expect(toTradingViewSymbol("Gold", readTradingViewSymbolMap())).toBe("TVC:GOLD");
   });
 });

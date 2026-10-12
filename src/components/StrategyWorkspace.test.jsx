@@ -89,16 +89,53 @@ describe("StrategyWorkspace", () => {
     render(<StrategyWorkspace strategyLibrary={strategyLibrary} selectedAsset="AAPL" onLogTrade={onLogTrade} />);
     fireEvent.click(screen.getByRole("button", { name: /Liquidity Sweep/ }));
     fireEvent.click(screen.getByRole("button", { name: /SMA/ }));
+    fireEvent.change(screen.getByLabelText("Position entry"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("Position stop"), { target: { value: "95" } });
+    fireEvent.change(screen.getByLabelText("Take profit"), { target: { value: "110" } });
+    fireEvent.change(screen.getByLabelText("Position account risk"), { target: { value: "50" } });
+    expect(screen.getByText("R:R").parentElement).toHaveTextContent("2:1");
+    expect(screen.getByText("Risk per trade").parentElement).toHaveTextContent("$50");
+    expect(screen.getByText("Suggested size").parentElement).toHaveTextContent("10");
     await waitFor(() => expect(localStorage.getItem("tradeCatalystSetupChecklist")).toContain("liquiditySweep"));
     fireEvent.click(screen.getByRole("button", { name: "Log this trade" }));
     expect(onLogTrade).toHaveBeenCalledWith(expect.objectContaining({
       asset: "AAPL",
       strategy: "Momentum",
       strategyVersionId: "version-1",
+      direction: "Long",
+      entry: 100,
+      stopLoss: 95,
+      takeProfit: 110,
+      riskReward: 2,
       liquiditySweep: true,
       indicators: ["SMA"],
     }));
     await waitFor(() => expect(JSON.parse(localStorage.getItem("tradeCatalystSetupChecklist"))).not.toHaveProperty("version-1"));
+  });
+
+  it("includes position plan levels and risk/reward in the copied setup snapshot", async () => {
+    const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
+    try {
+      render(<StrategyWorkspace strategyLibrary={strategyLibrary} selectedAsset="AAPL" />);
+      fireEvent.change(screen.getByLabelText("Position entry"), { target: { value: "100" } });
+      fireEvent.change(screen.getByLabelText("Position stop"), { target: { value: "95" } });
+      fireEvent.change(screen.getByLabelText("Take profit"), { target: { value: "110" } });
+      fireEvent.click(screen.getByRole("button", { name: "Copy setup snapshot" }));
+      await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+      expect(JSON.parse(writeText.mock.calls[0][0])).toMatchObject({
+        symbol: "AAPL",
+        direction: "Long",
+        entryZone: 100,
+        stopZone: 95,
+        takeProfitZone: 110,
+        riskReward: 2,
+      });
+    } finally {
+      if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
+      else delete navigator.clipboard;
+    }
   });
 
   it("restores a version's checklist from localStorage and exposes empty states", () => {

@@ -3,6 +3,7 @@ import { buildWidgetConfig } from "../services/tradingViewWidgetConfig";
 
 const EMBED_SCRIPT = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
 const EMPTY_STUDIES = [];
+const IFRAME_LOAD_FALLBACK_MS = 8000;
 
 export default function TradingViewChart({ symbol, interval, studies = EMPTY_STUDIES }) {
   const host = useRef(null);
@@ -16,6 +17,7 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
 
     let active = true;
     let frame = null;
+    let frameLoadFallback = null;
     setStatus("loading");
     container.replaceChildren();
     const widget = document.createElement("div");
@@ -25,14 +27,23 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
     script.src = EMBED_SCRIPT;
     script.async = true;
 
-    const observer = new MutationObserver(() => {
+    const markLoaded = () => {
+      if (!active) return;
+      if (frameLoadFallback !== null) {
+        window.clearTimeout(frameLoadFallback);
+        frameLoadFallback = null;
+      }
+      setStatus("loaded");
+    };
+    const observeFrame = () => {
       const iframe = widget.querySelector("iframe");
       if (!iframe || iframe === frame) return;
       frame = iframe;
-      iframe.addEventListener("load", () => {
-        if (active) setStatus("loaded");
-      }, { once: true });
-    });
+      iframe.addEventListener("load", markLoaded, { once: true });
+      if (frameLoadFallback !== null) window.clearTimeout(frameLoadFallback);
+      frameLoadFallback = window.setTimeout(markLoaded, IFRAME_LOAD_FALLBACK_MS);
+    };
+    const observer = new MutationObserver(observeFrame);
     observer.observe(widget, { childList: true, subtree: true });
     script.onerror = () => {
       queueMicrotask(() => {
@@ -40,13 +51,7 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
       });
     };
     script.onload = () => {
-      const iframe = widget.querySelector("iframe");
-      if (iframe && iframe !== frame) {
-        frame = iframe;
-        iframe.addEventListener("load", () => {
-          if (active) setStatus("loaded");
-        }, { once: true });
-      }
+      observeFrame();
     };
 
     let serializedConfig;
@@ -84,6 +89,7 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
     return () => {
       active = false;
       observer.disconnect();
+      if (frameLoadFallback !== null) window.clearTimeout(frameLoadFallback);
       script.onerror = null;
       script.onload = null;
       container.replaceChildren();

@@ -1,4 +1,5 @@
 export const CHART_SYMBOL_MAP_STORAGE_KEY = "tradeCatalystChartSymbolMap";
+export const TRADINGVIEW_SYMBOL_MAP_STORAGE_KEY = "tradeCatalystTradingViewSymbolMap";
 
 const BUILT_IN_ALIASES = Object.freeze({
   CFDSONGOLDUSOZ: "XAUUSD",
@@ -30,6 +31,7 @@ const TRADINGVIEW_ALIASES = Object.freeze({
   GOLD: "OANDA:XAUUSD",
   XAU: "OANDA:XAUUSD",
   XAUUSD: "OANDA:XAUUSD",
+  // Gold is verified as OANDA:XAUUSD. Other provider aliases below are unverified.
   SILVER: "OANDA:XAGUSD",
   XAG: "OANDA:XAGUSD",
   XAGUSD: "OANDA:XAGUSD",
@@ -54,6 +56,11 @@ const TRADINGVIEW_ALIASES = Object.freeze({
   SPX500: "OANDA:SPX500USD",
   BTCUSD: "BITSTAMP:BTCUSD",
 });
+const GOLD_TRADINGVIEW_ALTERNATIVES = Object.freeze([
+  "OANDA:XAUUSD",
+  "TVC:GOLD",
+  "FX_IDC:XAUUSD",
+]);
 
 export function normalizeSymbolKey(value) {
   return String(value ?? "")
@@ -74,6 +81,24 @@ export function readSymbolMap() {
 export function writeSymbolMap(value) {
   try {
     localStorage.setItem(CHART_SYMBOL_MAP_STORAGE_KEY, JSON.stringify(value || {}));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function readTradingViewSymbolMap() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(TRADINGVIEW_SYMBOL_MAP_STORAGE_KEY) || "{}");
+    return stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
+  } catch {
+    return {};
+  }
+}
+
+export function writeTradingViewSymbolMap(value) {
+  try {
+    localStorage.setItem(TRADINGVIEW_SYMBOL_MAP_STORAGE_KEY, JSON.stringify(value || {}));
     return true;
   } catch {
     return false;
@@ -118,7 +143,15 @@ export function toTradingViewSymbol(assetOrTicker, userMap = {}) {
 
   const alias = TRADINGVIEW_ALIASES[normalizeSymbolKey(rawName)];
   if (alias) return alias;
-  if (/^[A-Za-z0-9_]+:[A-Za-z0-9.-]{1,12}$/.test(rawName)) return rawName.toUpperCase();
+  if (/^[A-Za-z0-9_]+:[A-Za-z0-9.-]{1,12}$/.test(rawName)) return rawName;
   if (/^[A-Za-z0-9.-]{1,12}$/.test(rawName)) return rawName.toUpperCase();
   return null;
+}
+
+export function tradingViewSymbolAlternatives(assetOrTicker) {
+  const symbolKey = normalizeSymbolKey(assetOrTicker);
+  if (["CFDSONGOLDUSOZ", "GOLD", "XAU", "XAUUSD"].includes(symbolKey)) {
+    return [...GOLD_TRADINGVIEW_ALTERNATIVES];
+  }
+  return [];
 }

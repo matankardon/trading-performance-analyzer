@@ -4,7 +4,10 @@ import TradingViewChart from "./TradingViewChart";
 import { buildWidgetConfig } from "../services/tradingViewWidgetConfig";
 
 describe("TradingViewChart", () => {
-  afterEach(() => vi.restoreAllMocks());
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it("builds plain JSON-safe config and injects the exact serialized config string", async () => {
     const studies = [{ id: "RSI@tv-basicstudies", inputs: { length: 9 }, applied: true }];
@@ -100,5 +103,46 @@ describe("TradingViewChart", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     fireEvent.load(frame);
     await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("clears the initial overlay when the injected iframe loads", async () => {
+    render(<TradingViewChart symbol="AAPL" interval="D" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading TradingView chart");
+    await waitFor(() => expect(document.querySelector(".tradingview-widget-container__widget")).not.toBeNull());
+    const iframe = document.createElement("iframe");
+    document.querySelector(".tradingview-widget-container__widget").append(iframe);
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.load(iframe);
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+  });
+
+  it("clears the overlay through the iframe fallback timer", async () => {
+    vi.useFakeTimers();
+    render(<TradingViewChart symbol="AAPL" interval="D" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading TradingView chart");
+    const widget = document.querySelector(".tradingview-widget-container__widget");
+    const iframe = document.createElement("iframe");
+    await act(async () => {
+      widget.append(iframe);
+      await Promise.resolve();
+    });
+    act(() => vi.advanceTimersByTime(8000));
+    expect(screen.queryByRole("status")).toBeNull();
+  });
+
+  it("re-shows the overlay for a changed symbol and disconnects its observer on unmount", async () => {
+    const disconnect = vi.spyOn(MutationObserver.prototype, "disconnect");
+    const { rerender, unmount } = render(<TradingViewChart symbol="AAPL" interval="D" />);
+    const firstWidget = document.querySelector(".tradingview-widget-container__widget");
+    const firstFrame = document.createElement("iframe");
+    firstWidget.append(firstFrame);
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.load(firstFrame);
+    await waitFor(() => expect(screen.queryByRole("status")).toBeNull());
+
+    rerender(<TradingViewChart symbol="OANDA:XAUUSD" interval="D" />);
+    expect(screen.getByRole("status")).toHaveTextContent("Loading TradingView chart");
+    unmount();
+    expect(disconnect).toHaveBeenCalled();
   });
 });

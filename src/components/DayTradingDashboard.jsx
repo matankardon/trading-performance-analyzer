@@ -423,7 +423,7 @@ function DayTradingDashboard({
       {page === "Overview" && <OverviewPage market={market} strategy={strategy} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} score={score} />}
       {page === "Markets" && <MarketPage market={market} conditions={conditions} selectedAsset={selectedAsset} onAssetChange={onAssetChange} />}
       {page === "Strategy" && <StrategyWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} onLogTrade={onLogTrade} onAskCoach={onAskCoach} />}
-      {page === "Chart" && <ChartWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onViewTrade={onViewTrade} onLogTrade={onLogTrade} />}
+      {page === "Chart" && <ChartWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onViewTrade={onViewTrade} />}
     </div>
   );
 }

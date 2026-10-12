@@ -5,8 +5,10 @@ import { dbToBacktestResult } from "../models/backtestResult";
 import { fetchHistoricalBars } from "../services/historicalDataService";
 import { compareForwardToBacktest, computeForwardStats, computeTradeStats } from "../services/forwardTestStats";
 import { ruleBreakCost } from "../services/coachingAnalysis";
+import { calculateTradePlan } from "../services/tradePlan";
 import { bandFromScore, computeSetupScore, matchingTrades, missingRequired } from "../services/setupChecklist";
 import { copySetupSnapshot, downloadSetupSnapshot, normalizeSetupSnapshot } from "../services/setupSnapshot";
+import StrategyPositionSize from "./StrategyPositionSize";
 import { readSymbolMap, resolveChartSymbol } from "../services/symbolMap";
 import "./TradingWorkspaces.css";
 
@@ -14,6 +16,15 @@ const CHECKLIST_STORAGE_KEY = "tradeCatalystSetupChecklist";
 const SESSIONS = ["New York", "London", "Asia", "Overlap"];
 const PRICE_RANGE_DAYS = 30;
 const EMPTY_CHECKED = Object.freeze({});
+const EMPTY_PLAN = Object.freeze({
+  direction: "Long",
+  entry: "",
+  stopLoss: "",
+  takeProfit: "",
+  riskAmount: "",
+  riskType: "amount",
+  accountBalance: "",
+});
 
 function storageRead(key) {
   try {
@@ -172,6 +183,7 @@ export default function StrategyWorkspace({
   const [checklists, setChecklists] = useState(() => storageRead(CHECKLIST_STORAGE_KEY));
   const [marketState, setMarketState] = useState({ symbol: "", bars: [], error: "" });
   const [savedBacktests, setSavedBacktests] = useState([]);
+  const [positionPlan, setPositionPlan] = useState({ ...EMPTY_PLAN });
   const [backtestError, setBacktestError] = useState("");
   const [notice, setNotice] = useState("");
   const currentChecklist = checklists[version?.id] || {};
@@ -303,10 +315,15 @@ export default function StrategyWorkspace({
   }
 
   function setupSnapshot() {
+    const plan = calculateTradePlan(positionPlan);
     return normalizeSetupSnapshot({
       symbol,
       session: selectedSession,
-      direction: strategy?.direction,
+      direction: positionPlan.direction,
+      entryZone: positionPlan.entry === "" ? undefined : Number(positionPlan.entry),
+      stopZone: positionPlan.stopLoss === "" ? undefined : Number(positionPlan.stopLoss),
+      takeProfitZone: positionPlan.takeProfit === "" ? undefined : Number(positionPlan.takeProfit),
+      riskReward: plan.riskReward,
       setupConditions: [...tickedKeys, ...(sessionObserved ? ["session"] : []), ...(entryTimingReviewed ? ["entryTimingReviewed"] : [])],
       setupScore: score.score,
     });
@@ -323,6 +340,7 @@ export default function StrategyWorkspace({
   }
 
   function logTrade() {
+    const plan = calculateTradePlan(positionPlan);
     const setupFields = Object.fromEntries(SETUP_CONDITIONS.map(({ key }) => [key, Boolean(checked[key])]));
     const indicators = items.filter(({ type, key }) => type === "indicator" && checked[key]).map(({ name }) => name);
     onLogTrade({
@@ -330,6 +348,11 @@ export default function StrategyWorkspace({
       strategy: strategy?.name || "",
       strategyVersionId: version?.id || null,
       session: selectedSession || "New York",
+      direction: positionPlan.direction,
+      entry: positionPlan.entry === "" ? "" : Number(positionPlan.entry),
+      stopLoss: positionPlan.stopLoss === "" ? "" : Number(positionPlan.stopLoss),
+      takeProfit: positionPlan.takeProfit === "" ? "" : Number(positionPlan.takeProfit),
+      riskReward: plan.riskReward,
       indicators,
       ...setupFields,
     });
@@ -380,6 +403,8 @@ export default function StrategyWorkspace({
             {requiredMissing.length > 0 && <div className="strategy-required-warning">Required condition missing: {requiredMissing.map(({ label }) => label).join(", ")}. Status is Not ready.</div>}
           </div>
         </section>
+
+        <StrategyPositionSize values={positionPlan} onChange={setPositionPlan} />
 
         <section className="strategy-evidence-layout">
           <EvidencePanel

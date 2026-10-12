@@ -20,6 +20,11 @@
   align-items: end;
   flex-wrap: wrap;
   gap: 12px;
+  min-width: 0;
+}
+
+.chart-toolbar > * {
+  max-width: 100%;
 }
 
 .chart-view-switch {
@@ -54,7 +59,7 @@
 
 .chart-symbol-map {
   display: flex;
-  flex: 1 1 260px;
+  flex: 1 1 270px;
   align-items: center;
   flex-wrap: wrap;
   gap: 7px;
@@ -79,18 +84,16 @@
   min-height: 34px;
 }
 
-.chart-symbol-control,
-.chart-strategy-card > label {
+.chart-symbol-control {
   display: grid;
   gap: 6px;
-  min-width: 210px;
-  flex: 1 1 220px;
+  min-width: min(210px, 100%);
+  flex: 1 1 190px;
   color: var(--ink-soft, #9eacbd);
   font-size: 11px;
 }
 
-.chart-symbol-control input,
-.chart-strategy-card select {
+.chart-symbol-control input {
   min-width: 0;
   min-height: 38px;
   border: 1px solid var(--line, #314259);
@@ -104,6 +107,7 @@
 .chart-timeframes,
 .chart-range-picker {
   display: flex;
+  flex: 1 1 300px;
   flex-wrap: wrap;
   gap: 4px;
   min-width: 0;
@@ -140,6 +144,30 @@
   background: rgba(212, 175, 55, 0.1);
 }
 
+.chart-resolved-symbol {
+  margin: 3px 0 0;
+  color: var(--ink-soft, #9eacbd);
+  font-size: 10px;
+}
+
+.chart-symbol-fallback {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--ink-soft, #9eacbd);
+  font-size: 10px;
+}
+
+.chart-symbol-fallback > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chart-symbol-fallback small {
+  color: var(--color-gold, #d4af37);
+}
+
 .chart-refresh {
   min-height: 36px;
 }
@@ -154,31 +182,41 @@
 
 .chart-workspace-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 250px;
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 14px;
   min-width: 0;
 }
 
-.chart-side-panels {
+.chart-strategy-toolbar {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.chart-strategy-toolbar > label {
   display: grid;
-  gap: 14px;
+  flex: 0 1 190px;
+  gap: 5px;
+  color: var(--ink-soft, #9eacbd);
+  font-size: 10px;
+}
+
+.chart-strategy-toolbar select {
+  width: 100%;
   min-width: 0;
+  min-height: 34px;
+  border: 1px solid var(--line, #314259);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: #0d1724;
+  color: var(--ink, #e8edf4);
+  font: inherit;
 }
 
-.chart-declared-items {
-  display: grid;
-  gap: 7px;
-}
-
-.chart-declared-items .setup-check-chip {
-  justify-content: flex-start;
-  cursor: pointer;
-}
-
-.chart-declared-items input,
-.chart-plan-checklist input {
-  accent-color: var(--color-gold, #d4af37);
+.chart-strategy-toolbar .chart-indicator-status {
+  flex: 1 1 260px;
+  margin-top: 0;
 }
 
 .tradingview-chart-shell {
@@ -218,36 +256,27 @@
   font-size: 11px;
 }
 
-.chart-trade-plan {
+.strategy-position-card {
   display: grid;
-  gap: 10px;
+  gap: 9px;
 }
 
-.chart-plan-caveat,
-.chart-planning-note {
-  margin: 0;
-  color: var(--ink-soft, #9eacbd);
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.chart-plan-fields {
+.strategy-position-fields {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 9px;
 }
 
-.chart-plan-fields label {
+.strategy-position-fields label {
   display: grid;
   gap: 5px;
   min-width: 0;
   color: var(--ink-soft, #9eacbd);
-  font-size: 10px;
+  font-size: 11px;
 }
 
-.chart-plan-fields input,
-.chart-plan-fields select,
-.chart-strategy-card select {
+.strategy-position-fields input,
+.strategy-position-fields select {
   width: 100%;
   min-width: 0;
   min-height: 36px;
@@ -259,30 +288,25 @@
   font: inherit;
 }
 
-.chart-plan-results {
+.strategy-position-results {
   display: grid;
-  gap: 6px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
   border-top: 1px solid var(--line-soft, rgba(130, 155, 180, 0.12));
   padding-top: 9px;
   color: var(--ink-soft, #9eacbd);
   font-size: 10px;
 }
 
-.chart-plan-results span {
+.strategy-position-results span {
   display: flex;
   justify-content: space-between;
   gap: 8px;
 }
 
-.chart-plan-results strong {
+.strategy-position-results strong {
   color: var(--ink, #e8edf4);
   font-variant-numeric: tabular-nums;
-}
-
-.chart-plan-checklist {
-  grid-template-columns: 1fr;
-  max-height: 190px;
-  overflow: auto;
 }
 
 .chart-trades-list {
@@ -347,8 +371,7 @@
   margin-bottom: 12px;
 }
 
-.chart-card-heading h2,
-.chart-strategy-card h3 {
+.chart-card-heading h2 {
   margin: 2px 0;
   color: var(--ink, #e8edf4);
   font-size: 15px;
@@ -419,7 +442,6 @@
 }
 
 .chart-empty-state p,
-.chart-strategy-card p,
 .setup-export-panel p {
   margin: 0;
   color: var(--ink-soft, #9eacbd);
@@ -434,25 +456,6 @@
   padding: 6px 0 9px;
   color: var(--ink-soft, #9eacbd);
   font-size: 10px;
-}
-
-.chart-strategy-card {
-  display: grid;
-  gap: 12px;
-}
-
-.chart-strategy-card strong {
-  color: var(--ink-soft, #9eacbd);
-  font-size: 11px;
-}
-
-.chart-strategy-card ul {
-  display: grid;
-  gap: 7px;
-  margin: 0;
-  padding-left: 18px;
-  color: var(--ink, #e8edf4);
-  font-size: 11px;
 }
 
 .chart-trades-list .chart-card-heading > span {
@@ -793,9 +796,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .chart-side-panels {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 480px) {
@@ -828,7 +828,12 @@
   }
 
   .strategy-control-grid,
-  .strategy-checklist {
+  .strategy-checklist,
+  .strategy-position-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .strategy-position-results {
     grid-template-columns: 1fr;
   }
 

@@ -152,6 +152,41 @@ describe("ChartWorkspace", () => {
     expect(screen.getByRole("button", { name: "My trades" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("uses the verified gold feed and persists a successful fallback feed", () => {
+    const { unmount } = render(<ChartWorkspace selectedAsset="CFDs on Gold (US$ / OZ)" />);
+    expect(screen.getByText("Chart symbol: OANDA:XAUUSD")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try TVC:GOLD" }));
+    expect(screen.getByText("Chart symbol: TVC:GOLD")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "This works" }));
+    expect(JSON.parse(localStorage.getItem("tradeCatalystTradingViewSymbolMap"))).toEqual({
+      "CFDs on Gold (US$ / OZ)": "TVC:GOLD",
+    });
+    unmount();
+
+    render(<ChartWorkspace selectedAsset="CFDs on Gold (US$ / OZ)" />);
+    expect(screen.getByText("Chart symbol: TVC:GOLD")).toBeInTheDocument();
+  });
+
+  it("shows strategy studies in a compact row without a trade plan or checklist", () => {
+    const strategy = {
+      id: "momentum",
+      name: "Momentum",
+      versions: [{
+        id: "momentum-v2",
+        version: 2,
+        conditions: { liquiditySweep: true, smaConfirmation: true },
+      }],
+    };
+    render(<ChartWorkspace selectedAsset="AAPL" strategyLibrary={[strategy]} />);
+    expect(screen.getByRole("combobox", { name: "Strategy" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Strategy version" })).toHaveValue("momentum-v2");
+    expect(screen.getByText("SMA: applied · MASimple@tv-basicstudies")).toBeInTheDocument();
+    expect(screen.getByText("Liquidity Sweep: check manually")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Log this trade" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Trade plan entry")).not.toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Liquidity Sweep/ })).not.toBeInTheDocument();
+  });
+
   it("shows symbol-filtered trade count and net P&L in a closed dropdown and closes on Escape", async () => {
     const aaplTrade = sampleTrade({ pnl: 2345.5 });
     const otherTrade = sampleTrade({ id: "trade-2", asset: "MSFT", pnl: 100 });
@@ -169,37 +204,4 @@ describe("ChartWorkspace", () => {
     expect(trigger).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("opens the Add Trade flow with plan levels and selected strategy checklist", () => {
-    const onLogTrade = vi.fn();
-    const strategy = {
-      id: "momentum",
-      name: "Momentum",
-      session: "London",
-      versions: [{
-        id: "momentum-v2",
-        version: 2,
-        conditions: { liquiditySweep: true, smaConfirmation: true },
-      }],
-    };
-    render(<ChartWorkspace selectedAsset="AAPL" strategyLibrary={[strategy]} onLogTrade={onLogTrade} />);
-    fireEvent.click(screen.getAllByRole("checkbox", { name: /Liquidity Sweep/ })[0]);
-    fireEvent.click(screen.getAllByRole("checkbox", { name: /Indicator · SMA/ })[0]);
-    fireEvent.change(screen.getByLabelText("Trade plan entry"), { target: { value: "100" } });
-    fireEvent.change(screen.getByLabelText("Trade plan stop loss"), { target: { value: "95" } });
-    fireEvent.change(screen.getByLabelText("Trade plan take profit"), { target: { value: "110" } });
-    fireEvent.click(screen.getByRole("button", { name: "Log this trade" }));
-    expect(onLogTrade).toHaveBeenCalledWith(expect.objectContaining({
-      asset: "AAPL",
-      direction: "Long",
-      entry: 100,
-      stopLoss: 95,
-      takeProfit: 110,
-      riskReward: 2,
-      strategy: "Momentum",
-      strategyVersionId: "momentum-v2",
-      session: "London",
-      liquiditySweep: true,
-      indicators: ["SMA"],
-    }));
-  });
 });
