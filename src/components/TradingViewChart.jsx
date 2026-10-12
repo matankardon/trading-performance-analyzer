@@ -1,17 +1,8 @@
 import { useEffect, useRef, useState } from "react";
+import { buildWidgetConfig } from "../services/tradingViewWidgetConfig";
 
 const EMBED_SCRIPT = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
 const EMPTY_STUDIES = [];
-const STUDY_TITLES = {
-  "MASimple@tv-basicstudies": "moving average",
-  "MAExp@tv-basicstudies": "moving average exponential",
-  "RSI@tv-basicstudies": "relative strength index",
-  "MACD@tv-basicstudies": "macd",
-  "BB@tv-basicstudies": "bollinger bands",
-  "ADX@tv-basicstudies": "average directional index",
-  "IchimokuCloud@tv-basicstudies": "ichimoku cloud",
-  "StdDev@tv-basicstudies": "standard deviation",
-};
 
 export default function TradingViewChart({ symbol, interval, studies = EMPTY_STUDIES }) {
   const host = useRef(null);
@@ -44,7 +35,9 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
     });
     observer.observe(widget, { childList: true, subtree: true });
     script.onerror = () => {
-      if (active) setStatus("error");
+      queueMicrotask(() => {
+        if (active) setStatus("error");
+      });
     };
     script.onload = () => {
       const iframe = widget.querySelector("iframe");
@@ -56,26 +49,36 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
       }
     };
 
-    const config = {
-      symbol,
-      interval,
-      theme: "dark",
-      locale: "en",
-      timezone: "Etc/UTC",
-      style: "1",
-      backgroundColor: "#0D0D0D",
-      gridColor: "rgba(212, 175, 55, 0.08)",
-      allow_symbol_change: true,
-      autosize: true,
-      studies: studies.filter(({ applied }) => applied).map(({ id }) => id),
-      studies_overrides: studies.filter(({ applied }) => applied).reduce((overrides, study) => {
-        Object.entries(study.inputs).forEach(([input, value]) => {
-          overrides[`${STUDY_TITLES[study.id]}.${input}`] = value;
-        });
-        return overrides;
-      }, {}),
-    };
-    script.textContent = JSON.stringify(config);
+    let serializedConfig;
+    try {
+      const config = buildWidgetConfig({ symbol, interval, studies });
+      serializedConfig = JSON.stringify(config);
+      if (typeof serializedConfig !== "string") throw new TypeError("Widget configuration did not serialize to JSON.");
+    } catch {
+      console.error("Could not serialize TradingView widget config keys:", [
+        "symbol",
+        "interval",
+        "theme",
+        "locale",
+        "timezone",
+        "style",
+        "backgroundColor",
+        "gridColor",
+        "allow_symbol_change",
+        "autosize",
+        "studies",
+        "studies_overrides",
+      ]);
+      queueMicrotask(() => {
+        if (active) setStatus("error");
+      });
+      return () => {
+        active = false;
+        observer.disconnect();
+        container.replaceChildren();
+      };
+    }
+    script.textContent = serializedConfig;
     container.append(widget, script);
 
     return () => {
