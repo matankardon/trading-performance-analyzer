@@ -25,6 +25,36 @@ const BUILT_IN_ALIASES = Object.freeze({
   GC: "XAUUSD",
 });
 
+const TRADINGVIEW_ALIASES = Object.freeze({
+  CFDSONGOLDUSOZ: "OANDA:XAUUSD",
+  GOLD: "OANDA:XAUUSD",
+  XAU: "OANDA:XAUUSD",
+  XAUUSD: "OANDA:XAUUSD",
+  SILVER: "OANDA:XAGUSD",
+  XAG: "OANDA:XAGUSD",
+  XAGUSD: "OANDA:XAGUSD",
+  EURUSD: "FX:EURUSD",
+  USDJPY: "FX:USDJPY",
+  GBPUSD: "FX:GBPUSD",
+  AUDUSD: "FX:AUDUSD",
+  NZDUSD: "FX:NZDUSD",
+  USDCAD: "FX:USDCAD",
+  USDCHF: "FX:USDCHF",
+  EURGBP: "FX:EURGBP",
+  EURJPY: "FX:EURJPY",
+  GBPJPY: "FX:GBPJPY",
+  AUDJPY: "FX:AUDJPY",
+  US30: "OANDA:US30USD",
+  DOW: "OANDA:US30USD",
+  NAS100: "OANDA:NAS100USD",
+  NASDAQ: "OANDA:NAS100USD",
+  NQ: "OANDA:NAS100USD",
+  SPX: "OANDA:SPX500USD",
+  SP500: "OANDA:SPX500USD",
+  SPX500: "OANDA:SPX500USD",
+  BTCUSD: "BITSTAMP:BTCUSD",
+});
+
 export function normalizeSymbolKey(value) {
   return String(value ?? "")
     .trim()
@@ -72,5 +102,23 @@ export function resolveChartSymbol(assetName, userMap = {}) {
     return rawName.toUpperCase();
   }
 
+  return null;
+}
+
+export function toTradingViewSymbol(assetOrTicker, userMap = {}) {
+  const rawName = String(assetOrTicker ?? "").trim();
+  if (!rawName) return null;
+
+  const normalizedUserMap = userMap && typeof userMap === "object" ? userMap : {};
+  const candidateKeys = [rawName, rawName.toUpperCase(), rawName.toLowerCase(), normalizeSymbolKey(rawName)];
+  for (const candidate of candidateKeys) {
+    const mapped = normalizedUserMap[candidate] || normalizedUserMap[normalizeSymbolKey(candidate)];
+    if (typeof mapped === "string" && mapped.trim()) return mapped.trim().toUpperCase();
+  }
+
+  const alias = TRADINGVIEW_ALIASES[normalizeSymbolKey(rawName)];
+  if (alias) return alias;
+  if (/^[A-Za-z0-9_]+:[A-Za-z0-9.-]{1,12}$/.test(rawName)) return rawName.toUpperCase();
+  if (/^[A-Za-z0-9.-]{1,12}$/.test(rawName)) return rawName.toUpperCase();
   return null;
 }

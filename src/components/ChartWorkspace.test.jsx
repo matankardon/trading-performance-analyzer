@@ -92,6 +92,7 @@ describe("ChartWorkspace", () => {
   it("shows loading, then real chart content, and reports provider errors with Retry", async () => {
     fetchHistoricalBars.mockRejectedValueOnce(new Error("Historical provider is unavailable."));
     render(<ChartWorkspace selectedAsset="AAPL" />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
     expect(screen.getByRole("status")).toHaveTextContent("Loading historical bars");
     expect(await screen.findByRole("alert")).toHaveTextContent("Historical provider is unavailable.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
@@ -102,36 +103,103 @@ describe("ChartWorkspace", () => {
   it("shows the provider's empty-range state", async () => {
     fetchHistoricalBars.mockResolvedValue([]);
     render(<ChartWorkspace selectedAsset="AAPL" />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
     expect(await screen.findByText("No bars in this range")).toBeInTheDocument();
   });
 
   it("opens the existing trade detail flow from a clicked chart marker and toggles journal markers", async () => {
     const onViewTrade = vi.fn();
     render(<ChartWorkspace selectedAsset="AAPL" trades={[sampleTrade()]} onViewTrade={onViewTrade} />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
     await waitFor(() => expect(screen.getByLabelText("Historical candlestick chart")).toBeInTheDocument());
-    expect(markerCalls.at(-1)).toHaveLength(2);
+    await waitFor(() => expect(markerCalls.at(-1)).toHaveLength(2));
     const chart = charts[0];
     chart.clickHandler({ time: Math.floor(sampleBars()[0].timestamp / 1000) });
     expect(onViewTrade).toHaveBeenCalledWith(expect.objectContaining({ id: "trade-1" }));
-    fireEvent.click(screen.getByRole("checkbox", { name: "My trades" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Journal markers" }));
     await waitFor(() => expect(markerCalls.at(-1)).toEqual([]));
-    expect(screen.getByText("Trades on this chart")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Trades on this chart/ })).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("keeps the trade list visible when markers are hidden and centers on a selected trade", async () => {
+  it("keeps the dropdown available when markers are hidden and centers on a selected trade", async () => {
     render(<ChartWorkspace selectedAsset="AAPL" trades={[sampleTrade()]} />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
     await waitFor(() => expect(screen.getByLabelText("Historical candlestick chart")).toBeInTheDocument());
-    fireEvent.click(screen.getByRole("checkbox", { name: "My trades" }));
-    expect(screen.getByRole("button", { name: /Momentum · v2/ })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Momentum · v2/ }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Journal markers" }));
+    fireEvent.click(screen.getByRole("button", { name: /Trades on this chart/ }));
+    expect(screen.getByText("Momentum · v2")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
     await waitFor(() => expect(charts.at(-1).timeScale().setVisibleLogicalRange).toHaveBeenCalled());
   });
 
   it("explains an unsupported stored timeframe instead of requesting it", () => {
     localStorage.setItem("tradeCatalystChartSelection", JSON.stringify({ symbol: "AAPL", timeframe: "2h" }));
     render(<ChartWorkspace selectedAsset="AAPL" />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
     expect(screen.getByRole("alert")).toHaveTextContent('Unsupported timeframe "2h".');
     expect(screen.getByRole("alert")).toHaveTextContent("1m, 5m, 15m, 1h, 4h, 1d, 1w");
     expect(fetchHistoricalBars).not.toHaveBeenCalled();
+  });
+
+  it("starts with TradingView and persists the view switch", async () => {
+    const { unmount } = render(<ChartWorkspace selectedAsset="AAPL" />);
+    expect(screen.getByRole("button", { name: "TradingView" })).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() => expect(localStorage.getItem("tradeCatalystChartView")).toBe("tradingview"));
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
+    await waitFor(() => expect(localStorage.getItem("tradeCatalystChartView")).toBe("my-trades"));
+    unmount();
+    render(<ChartWorkspace selectedAsset="AAPL" />);
+    expect(screen.getByRole("button", { name: "My trades" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("shows symbol-filtered trade count and net P&L in a closed dropdown and closes on Escape", async () => {
+    const aaplTrade = sampleTrade({ pnl: 2345.5 });
+    const otherTrade = sampleTrade({ id: "trade-2", asset: "MSFT", pnl: 100 });
+    render(<ChartWorkspace selectedAsset="AAPL" trades={[aaplTrade, otherTrade]} />);
+    const trigger = screen.getByRole("button", { name: /Trades on this chart/ });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).toHaveTextContent("1 trades · net +$2,345.50");
+    fireEvent.click(trigger);
+    expect(screen.getByText("1 in range · 1 matching AAPL")).toBeInTheDocument();
+    expect(screen.getByText("1 in range · 1 matching AAPL")).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(trigger);
+    fireEvent.pointerDown(document.body);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("opens the Add Trade flow with plan levels and selected strategy checklist", () => {
+    const onLogTrade = vi.fn();
+    const strategy = {
+      id: "momentum",
+      name: "Momentum",
+      session: "London",
+      versions: [{
+        id: "momentum-v2",
+        version: 2,
+        conditions: { liquiditySweep: true, smaConfirmation: true },
+      }],
+    };
+    render(<ChartWorkspace selectedAsset="AAPL" strategyLibrary={[strategy]} onLogTrade={onLogTrade} />);
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /Liquidity Sweep/ })[0]);
+    fireEvent.click(screen.getAllByRole("checkbox", { name: /Indicator · SMA/ })[0]);
+    fireEvent.change(screen.getByLabelText("Trade plan entry"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("Trade plan stop loss"), { target: { value: "95" } });
+    fireEvent.change(screen.getByLabelText("Trade plan take profit"), { target: { value: "110" } });
+    fireEvent.click(screen.getByRole("button", { name: "Log this trade" }));
+    expect(onLogTrade).toHaveBeenCalledWith(expect.objectContaining({
+      asset: "AAPL",
+      direction: "Long",
+      entry: 100,
+      stopLoss: 95,
+      takeProfit: 110,
+      riskReward: 2,
+      strategy: "Momentum",
+      strategyVersionId: "momentum-v2",
+      session: "London",
+      liquiditySweep: true,
+      indicators: ["SMA"],
+    }));
   });
 });
