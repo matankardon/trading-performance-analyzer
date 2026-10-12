@@ -16,6 +16,43 @@ function jsonSafeValue(value) {
   return undefined;
 }
 
+function isPrimitive(value) {
+  return ["string", "number", "boolean"].includes(typeof value)
+    && (typeof value !== "number" || Number.isFinite(value));
+}
+
+export function assertWidgetConfigShape(config) {
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw new TypeError("TradingView widget config must be a plain object.");
+  }
+
+  Object.entries(config).forEach(([key, value]) => {
+    if (key === "studies_overrides") {
+      if (!value || typeof value !== "object" || Array.isArray(value)) {
+        throw new TypeError("TradingView studies_overrides must be a flat object.");
+      }
+      Object.entries(value).forEach(([overrideKey, overrideValue]) => {
+        if (!overrideKey || !isPrimitive(overrideValue)) {
+          throw new TypeError("TradingView study overrides must have primitive values.");
+        }
+      });
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      if (!value.every(isPrimitive)) {
+        throw new TypeError(`TradingView widget config array "${key}" must contain only primitives.`);
+      }
+      return;
+    }
+
+    if (!isPrimitive(value)) {
+      throw new TypeError(`TradingView widget config value "${key}" must be primitive.`);
+    }
+  });
+  return true;
+}
+
 export function buildWidgetConfig({ symbol, interval, studies = EMPTY_STUDIES } = {}) {
   const validStudies = Array.isArray(studies)
     ? studies.filter((study) => study?.applied && typeof study.id === "string" && study.id.trim())
@@ -26,11 +63,13 @@ export function buildWidgetConfig({ symbol, interval, studies = EMPTY_STUDIES } 
     Object.entries(study.inputs).forEach(([input, value]) => {
       const safeValue = jsonSafeValue(value);
       const title = STUDY_TITLES[study.id];
-      if (title && safeValue !== undefined) studiesOverrides[`${title}.${input}`] = safeValue;
+      if (title && safeValue !== undefined && typeof input === "string" && input.trim()) {
+        studiesOverrides[`${title}.${input}`] = safeValue;
+      }
     });
   });
 
-  return {
+  const config = {
     symbol: String(symbol ?? ""),
     interval: String(interval ?? ""),
     theme: "dark",
@@ -44,4 +83,6 @@ export function buildWidgetConfig({ symbol, interval, studies = EMPTY_STUDIES } 
     studies: validStudies.map(({ id }) => id),
     studies_overrides: studiesOverrides,
   };
+  assertWidgetConfigShape(config);
+  return config;
 }

@@ -3,7 +3,8 @@ import { buildWidgetConfig } from "../services/tradingViewWidgetConfig";
 
 const EMBED_SCRIPT = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
 const EMPTY_STUDIES = [];
-const IFRAME_LOAD_FALLBACK_MS = 8000;
+const IFRAME_GRACE_MS = 1500;
+const MAX_LOADING_MS = 8000;
 
 export default function TradingViewChart({ symbol, interval, studies = EMPTY_STUDIES }) {
   const host = useRef(null);
@@ -17,7 +18,8 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
 
     let active = true;
     let frame = null;
-    let frameLoadFallback = null;
+    let frameGraceTimer = null;
+    let maxLoadingTimer = null;
     setStatus("loading");
     container.replaceChildren();
     const widget = document.createElement("div");
@@ -29,23 +31,26 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
 
     const markLoaded = () => {
       if (!active) return;
-      if (frameLoadFallback !== null) {
-        window.clearTimeout(frameLoadFallback);
-        frameLoadFallback = null;
-      }
+      if (frameGraceTimer !== null) window.clearTimeout(frameGraceTimer);
+      if (maxLoadingTimer !== null) window.clearTimeout(maxLoadingTimer);
+      frameGraceTimer = null;
+      maxLoadingTimer = null;
       setStatus("loaded");
     };
     const observeFrame = () => {
       const iframe = widget.querySelector("iframe");
       if (!iframe || iframe === frame) return;
       frame = iframe;
-      iframe.addEventListener("load", markLoaded, { once: true });
-      if (frameLoadFallback !== null) window.clearTimeout(frameLoadFallback);
-      frameLoadFallback = window.setTimeout(markLoaded, IFRAME_LOAD_FALLBACK_MS);
+      if (frameGraceTimer !== null) window.clearTimeout(frameGraceTimer);
+      frameGraceTimer = window.setTimeout(markLoaded, IFRAME_GRACE_MS);
     };
     const observer = new MutationObserver(observeFrame);
     observer.observe(widget, { childList: true, subtree: true });
     script.onerror = () => {
+      if (frameGraceTimer !== null) window.clearTimeout(frameGraceTimer);
+      if (maxLoadingTimer !== null) window.clearTimeout(maxLoadingTimer);
+      frameGraceTimer = null;
+      maxLoadingTimer = null;
       queueMicrotask(() => {
         if (active) setStatus("error");
       });
@@ -59,6 +64,7 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
       const config = buildWidgetConfig({ symbol, interval, studies });
       serializedConfig = JSON.stringify(config);
       if (typeof serializedConfig !== "string") throw new TypeError("Widget configuration did not serialize to JSON.");
+      console.debug("TradingView widget config JSON:", serializedConfig);
     } catch {
       console.error("Could not serialize TradingView widget config keys:", [
         "symbol",
@@ -84,12 +90,14 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
       };
     }
     script.textContent = serializedConfig;
+    maxLoadingTimer = window.setTimeout(markLoaded, MAX_LOADING_MS);
     container.append(widget, script);
 
     return () => {
       active = false;
       observer.disconnect();
-      if (frameLoadFallback !== null) window.clearTimeout(frameLoadFallback);
+      if (frameGraceTimer !== null) window.clearTimeout(frameGraceTimer);
+      if (maxLoadingTimer !== null) window.clearTimeout(maxLoadingTimer);
       script.onerror = null;
       script.onload = null;
       container.replaceChildren();
