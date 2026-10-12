@@ -7,6 +7,7 @@ import { compareForwardToBacktest, computeForwardStats, computeTradeStats } from
 import { ruleBreakCost } from "../services/coachingAnalysis";
 import { bandFromScore, computeSetupScore, matchingTrades, missingRequired } from "../services/setupChecklist";
 import { copySetupSnapshot, downloadSetupSnapshot, normalizeSetupSnapshot } from "../services/setupSnapshot";
+import { readSymbolMap, resolveChartSymbol } from "../services/symbolMap";
 import "./TradingWorkspaces.css";
 
 const CHECKLIST_STORAGE_KEY = "tradeCatalystSetupChecklist";
@@ -158,12 +159,16 @@ export default function StrategyWorkspace({
   onLogTrade = () => {},
   onAskCoach = () => {},
 }) {
+  const [symbolMap] = useState(() => readSymbolMap());
   const [strategyId, setStrategyId] = useState(strategyLibrary[0]?.id || "");
   const strategy = strategyLibrary.find((item) => item.id === strategyId) || strategyLibrary[0] || null;
   const versions = useMemo(() => [...(strategy?.versions || [])].sort((left, right) => Number(right.version) - Number(left.version)), [strategy]);
   const [versionId, setVersionId] = useState("");
   const version = versions.find((item) => item.id === versionId) || versions[0] || null;
-  const [symbol, setSymbol] = useState(selectedAsset);
+  const [symbol, setSymbol] = useState(() => {
+    const fallback = selectedAsset || "";
+    return resolveChartSymbol(fallback, symbolMap) || fallback.toUpperCase();
+  });
   const [checklists, setChecklists] = useState(() => storageRead(CHECKLIST_STORAGE_KEY));
   const [marketState, setMarketState] = useState({ symbol: "", bars: [], error: "" });
   const [savedBacktests, setSavedBacktests] = useState([]);

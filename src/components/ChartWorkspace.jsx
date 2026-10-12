@@ -13,6 +13,7 @@ import { supportedHistoricalTimeframes } from "../../supabase/functions/_shared/
 import { INDICATORS, SETUP_CONDITIONS } from "../constants/strategyOptions";
 import { fetchHistoricalBars, historicalAssetSuggestions } from "../services/historicalDataService";
 import { priceLinesForTrade, tradesToMarkers } from "../services/chartOverlay";
+import { readSymbolMap, resolveChartSymbol, writeSymbolMap } from "../services/symbolMap";
 import {
   calculateADX,
   calculateBollingerBands,
@@ -442,8 +443,12 @@ export default function ChartWorkspace({
   onAssetChange = () => {},
   onViewTrade = () => {},
 }) {
+  const [symbolMap, setSymbolMap] = useState(() => readSymbolMap());
   const [initial] = useState(() => readSelection());
-  const [symbol, setSymbol] = useState(selectedAsset || initial.symbol);
+  const [symbol, setSymbol] = useState(() => {
+    const fallback = selectedAsset || initial.symbol || "";
+    return resolveChartSymbol(fallback, symbolMap) || fallback.toUpperCase();
+  });
   const [timeframe, setTimeframe] = useState(initial.timeframe);
   const [range, setRange] = useState("3M");
   const [requestState, setRequestState] = useState({ key: "", bars: [], error: "" });
@@ -452,15 +457,20 @@ export default function ChartWorkspace({
   const [strategyVersionId, setStrategyVersionId] = useState("");
   const [crosshair, setCrosshair] = useState(null);
   const [focusTradeDate, setFocusTradeDate] = useState("");
+  const [pendingMapValue, setPendingMapValue] = useState("");
   const requestId = useRef(0);
   const journalAssets = useMemo(() => {
     const counts = new Map();
     trades.forEach((trade) => {
-      const asset = String(trade.asset ?? "").trim().toUpperCase();
+      const asset = String(trade.asset ?? "").trim();
       if (asset) counts.set(asset, (counts.get(asset) || 0) + 1);
     });
     return [...counts].sort((left, right) => right[1] - left[1]).map(([asset]) => asset);
   }, [trades]);
+  const unresolvedJournalAsset = useMemo(
+    () => journalAssets.find((asset) => !resolveChartSymbol(asset, symbolMap)),
+    [journalAssets, symbolMap],
+  );
   const symbols = useMemo(() => [...new Set([...journalAssets, ...historicalAssetSuggestions])], [journalAssets]);
   const allVersions = useMemo(() => strategyLibrary.flatMap((strategy) => (
     (strategy.versions || []).map((version) => ({ strategy, version }))
@@ -537,9 +547,23 @@ export default function ChartWorkspace({
   }, [bounds, invalidTimeframe, refreshKey, requestKey, symbol, timeframe, supportedSymbol]);
 
   function chooseSymbol(value) {
-    const nextSymbol = value.toUpperCase();
+    const nextSymbol = resolveChartSymbol(value, symbolMap) || value.toUpperCase();
     setSymbol(nextSymbol);
     onAssetChange(nextSymbol);
+  }
+
+  function saveSymbolMap(assetName) {
+    const nextSymbol = String(pendingMapValue || "").trim().toUpperCase();
+    if (!assetName || !nextSymbol) return;
+    const nextMap = { ...symbolMap, [assetName]: nextSymbol };
+    setSymbolMap(nextMap);
+    writeSymbolMap(nextMap);
+    setPendingMapValue("");
+    const resolved = resolveChartSymbol(assetName, nextMap);
+    if (resolved) {
+      setSymbol(resolved);
+      onAssetChange(resolved);
+    }
   }
 
   const barDates = new Set(bars.map((bar) => new Date(bar.timestamp).toISOString().slice(0, 10)));
@@ -559,6 +583,13 @@ export default function ChartWorkspace({
           <input aria-label="Symbol" list="chart-symbol-options" value={symbol} onChange={(event) => chooseSymbol(event.target.value)} placeholder="Search journaled assets or enter a ticker" />
           <datalist id="chart-symbol-options">{symbols.map((entry) => <option value={entry} key={entry} />)}</datalist>
         </label>
+        {unresolvedJournalAsset && (
+          <div className="chart-symbol-map">
+            <span>Map to chart symbol</span>
+            <input aria-label={`Map ${unresolvedJournalAsset} to chart symbol`} value={pendingMapValue} onChange={(event) => setPendingMapValue(event.target.value)} placeholder="e.g. XAUUSD" />
+            <button type="button" onClick={() => saveSymbolMap(unresolvedJournalAsset)}>Save</button>
+          </div>
+        )}
         <fieldset className="chart-timeframes"><legend>Timeframe</legend>{SUPPORTED_TIMEFRAMES.map((item) => <button key={item} type="button" className={timeframe === item ? "selected" : ""} aria-pressed={timeframe === item} onClick={() => setTimeframe(item)}>{item}</button>)}</fieldset>
         <fieldset className="chart-range-picker"><legend>Date range</legend>{Object.keys(RANGE_DAYS).map((item) => <button key={item} type="button" className={range === item ? "selected" : ""} aria-pressed={range === item} onClick={() => setRange(item)}>{item}</button>)}</fieldset>
         <button type="button" className="secondary-btn chart-refresh" onClick={() => setRefreshKey((value) => value + 1)}>Refresh</button>

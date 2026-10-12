@@ -1,6 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { vi } from "vitest";
+import { afterEach, vi } from "vitest";
 import CoachingChat from "./CoachingChat";
+
+afterEach(() => vi.useRealTimers());
 
 const {
   addLatestBacktests,
@@ -392,6 +394,8 @@ describe("Coaching chat", () => {
   });
 
   it("opens an older conversation and appends a new turn to that conversation", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime("2026-10-07T12:00:00Z");
     const latest = { id: "latest-conversation", title: "Latest topic", created_at: "2026-10-07T10:00:00Z", updated_at: "2026-10-07T11:00:00Z" };
     const older = { id: "older-conversation", title: "Older topic", created_at: "2026-10-01T10:00:00Z", updated_at: "2026-10-01T11:00:00Z" };
     loadCoachConversations.mockResolvedValue([latest, older]);
