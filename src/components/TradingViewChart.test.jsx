@@ -40,6 +40,12 @@ describe("TradingViewChart", () => {
       interval: "60",
       studies: ["RSI@tv-basicstudies"],
       theme: "dark",
+      colorTheme: "dark",
+      backgroundColor: "#0D0D0D",
+      gridColor: "rgba(212, 175, 55, 0.08)",
+      autosize: true,
+      width: "100%",
+      height: "100%",
       locale: "en",
     });
     render(<TradingViewChart symbol="OANDA:XAUUSD" interval="60" studies={studies} />);
@@ -82,7 +88,7 @@ describe("TradingViewChart", () => {
       studies: GOLD_BOLLINGER_STUDIES,
     });
     expect(JSON.stringify(config)).toBe(
-      '{"symbol":"OANDA:XAUUSD","interval":"60","theme":"dark","locale":"en","timezone":"Etc/UTC","style":"1","backgroundColor":"#0D0D0D","gridColor":"rgba(212, 175, 55, 0.08)","allow_symbol_change":true,"autosize":true,"studies":["BB@tv-basicstudies"],"studies_overrides":{"bollinger bands.length":20,"bollinger bands.stdDev":2}}',
+      '{"symbol":"OANDA:XAUUSD","interval":"60","theme":"dark","colorTheme":"dark","locale":"en","timezone":"Etc/UTC","style":"1","backgroundColor":"#0D0D0D","gridColor":"rgba(212, 175, 55, 0.08)","allow_symbol_change":true,"autosize":true,"width":"100%","height":"100%","studies":["BB@tv-basicstudies"],"studies_overrides":{"bollinger bands.length":20,"bollinger bands.stdDev":2}}',
     );
   });
 
@@ -105,8 +111,18 @@ describe("TradingViewChart", () => {
       symbol: "OANDA:XAUUSD",
       interval: "60",
       theme: "dark",
+      colorTheme: "dark",
       timezone: "Etc/UTC",
       studies: [],
+    });
+    expect(document.querySelector(".tradingview-chart-shell").style.height).toBe("var(--tradingview-chart-height)");
+    expect(document.querySelector(".tradingview-widget-container").style).toMatchObject({
+      width: "100%",
+      height: "100%",
+    });
+    expect(document.querySelector(".tradingview-widget-container__widget").style).toMatchObject({
+      width: "100%",
+      height: "100%",
     });
     unmount();
     expect(document.querySelector('script[src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"]')).toBeNull();
@@ -139,6 +155,7 @@ describe("TradingViewChart", () => {
       "symbol",
       "interval",
       "theme",
+      "colorTheme",
       "locale",
       "timezone",
       "style",
@@ -146,6 +163,8 @@ describe("TradingViewChart", () => {
       "gridColor",
       "allow_symbol_change",
       "autosize",
+      "width",
+      "height",
       "studies",
       "studies_overrides",
     ]);

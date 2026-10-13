@@ -24,6 +24,8 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
     container.replaceChildren();
     const widget = document.createElement("div");
     widget.className = "tradingview-widget-container__widget";
+    widget.style.width = "100%";
+    widget.style.height = "100%";
     const script = document.createElement("script");
     script.type = "text/javascript";
     script.src = EMBED_SCRIPT;
@@ -70,6 +72,7 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
         "symbol",
         "interval",
         "theme",
+        "colorTheme",
         "locale",
         "timezone",
         "style",
@@ -77,6 +80,8 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
         "gridColor",
         "allow_symbol_change",
         "autosize",
+        "width",
+        "height",
         "studies",
         "studies_overrides",
       ]);
@@ -105,7 +110,7 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
   }, [interval, retryKey, studyKey, symbol, studies]);
 
   return (
-    <div className="tradingview-chart-shell">
+    <div className="tradingview-chart-shell" style={{ height: "var(--tradingview-chart-height)" }}>
       {status !== "loaded" && <div className="chart-loading-shimmer tradingview-chart-loading" role="status">
         {status === "error" ? <div className="tradingview-chart-error" role="alert">
           <strong>TradingView chart could not be loaded</strong>
@@ -113,7 +118,7 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
           <button type="button" className="secondary-btn" onClick={() => setRetryKey((value) => value + 1)}>Retry</button>
         </div> : "Loading TradingView chart…"}
       </div>}
-      <div ref={host} className="tradingview-widget-container" aria-label={`TradingView chart for ${symbol}`} />
+      <div ref={host} className="tradingview-widget-container" style={{ width: "100%", height: "100%" }} aria-label={`TradingView chart for ${symbol}`} />
     </div>
   );
 }

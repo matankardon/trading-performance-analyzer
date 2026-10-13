@@ -73,6 +73,7 @@ export function buildWidgetConfig({ symbol, interval, studies = EMPTY_STUDIES } 
     symbol: String(symbol ?? ""),
     interval: String(interval ?? ""),
     theme: "dark",
+    colorTheme: "dark",
     locale: "en",
     timezone: "Etc/UTC",
     style: "1",
@@ -80,6 +81,8 @@ export function buildWidgetConfig({ symbol, interval, studies = EMPTY_STUDIES } 
     gridColor: "rgba(212, 175, 55, 0.08)",
     allow_symbol_change: true,
     autosize: true,
+    width: "100%",
+    height: "100%",
     studies: validStudies.map(({ id }) => id),
     studies_overrides: studiesOverrides,
   };
