@@ -10,6 +10,7 @@ function PrivacyNotice() {
       </p>
       <p>TradingView provides the chart, ticker, economic calendar, news timeline, and technical-analysis widgets. These widgets load TradingView scripts and receive display settings and selected symbols; no journal trades, notes, or other journal records are sent to them.</p>
       <p>News headlines and summaries are obtained from third-party news providers. When you request an explanation, only the headline and provider summary are sent to OpenAI; full article text and journal data are not included.</p>
+      <p>Requested market symbols and timeframes are sent through the app's backend to Massive to retrieve historical market bars. No journal data is sent with market-data requests.</p>
       <p>
         This privacy notice is a development draft and requires legal review before production use. A Settings-level opt-out for screenshot storage is not available yet.
       </p>

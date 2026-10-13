@@ -1,398 +1,338 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { MARKET_SCORE_EXPLANATIONS } from "../constants/marketScoreExplanations";
+import { isTimestampInSession } from "../services/sessionWindows";
 import {
-  PieChart,
-  Pie,
-  Cell,
-  PolarAngleAxis,
-  RadialBar,
-  RadialBarChart,
-  ResponsiveContainer,
-} from "recharts";
+  MARKET_DATA_SOURCE,
+  MARKET_TIMEFRAMES,
+  useMarketData,
+} from "../services/useMarketData";
+import { readLastUsedSetupChecklist } from "../services/setupChecklist";
 import ChartWorkspace from "./ChartWorkspace";
 import StrategyWorkspace from "./StrategyWorkspace";
+import "./MarketWorkspace.css";
 
-const scoreFactors = [
-  { label: "Market Structure", maximum: 25 },
-  { label: "Momentum", maximum: 20 },
-  { label: "Volatility", maximum: 20 },
-  { label: "Market Context", maximum: 15 },
-  { label: "Event Risk", maximum: 10 },
-  { label: "Sentiment", maximum: 10 },
-  { label: "Expert View", maximum: null },
-];
+const COMPONENT_LABELS = Object.freeze({
+  trend: "Trend",
+  structure: "Structure",
+  momentum: "Momentum",
+  volatility: "Volatility",
+  volume: "Volume",
+});
 
-const conditionFields = [
-  { key: "trend", label: "Trend" },
-  { key: "momentum", label: "Momentum" },
-  { key: "volatility", label: "Volatility" },
-  { key: "volume", label: "Volume" },
-  { key: "relativeVolume", label: "Relative Volume" },
-  { key: "vwap", label: "VWAP" },
-  { key: "atr", label: "ATR" },
-  { key: "structure", label: "Structure" },
-  { key: "session", label: "Session" },
-  { key: "liquidity", label: "Liquidity" },
-];
+const SUGGESTED_SYMBOLS = ["SPY", "QQQ", "AAPL", "EURUSD"];
 
-const primaryConditionFields = conditionFields.slice(0, 3);
-const secondaryConditionFields = conditionFields.slice(3);
-
-const structureFields = [
-  ["Swing High", "swingHigh"],
-  ["Swing Low", "swingLow"],
-  ["Previous Day High", "previousDayHigh"],
-  ["Previous Day Low", "previousDayLow"],
-  ["Liquidity", "liquidity"],
-  ["Market Structure Shift", "marketStructureShift"],
-  ["Fair Value Gap", "fairValueGap"],
-  ["Order Block", "orderBlock"],
-];
-
-function unavailable(value) {
-  return value === undefined || value === null || value === "";
+function formatPrice(value) {
+  return Number.isFinite(value)
+    ? value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 5 })
+    : "--";
 }
 
-function SourceMeta({ source, updated, status = "Unavailable" }) {
-  return (
-    <div className="source-meta">
-      <span>Source: {source || "Not connected"}</span>
-      <span>Last updated: {updated || "--"}</span>
-      <span className="data-status">{status}</span>
-    </div>
-  );
+function formatChange(value, percent = false) {
+  if (!Number.isFinite(value)) return "Unavailable";
+  const prefix = value > 0 ? "+" : "";
+  return `${prefix}${value.toFixed(2)}${percent ? "%" : ""}`;
 }
 
-function SectionHeader({ eyebrow, title, description, status, icon }) {
-  return (
-    <div className="decision-section-header">
-      <div>
-        <p className="eyebrow">{icon && <span className="section-header-icon" aria-hidden="true">{icon}</span>}{eyebrow}</p>
-        <h2>{title}</h2>
-      </div>
-      <div className="section-header-context">
-        {description && <p>{description}</p>}
-        {status && <span className="section-status">{status}</span>}
-      </div>
-    </div>
-  );
+function formatUtc(timestamp) {
+  return Number.isFinite(timestamp)
+    ? `${new Date(timestamp).toISOString().replace("T", " ").slice(0, 19)} UTC`
+    : "Unavailable";
 }
 
-function UnavailableState({ title, description }) {
-  return (
-    <div className="decision-empty-state">
-      <span className="empty-state-mark" aria-hidden="true">--</span>
-      <strong>{title}</strong>
-      <p>{description}</p>
-    </div>
-  );
+function activeSession(timestamp) {
+  if (!Number.isFinite(timestamp)) return "Unavailable";
+  return ["Overlap", "New York", "London", "Asia"]
+    .find((session) => isTimestampInSession(timestamp, session))
+    || "Outside listed sessions";
 }
 
-function MarketHeader({ market, asset, onAssetChange }) {
-  const hasPrice = !unavailable(market.price);
-  const hasAsset = !unavailable(market.asset);
+function MarketHeader({ market, asset, trades, onAssetChange, timeframe, onTimeframeChange }) {
+  const journaledAssets = [...new Set(trades.map(({ asset: name }) => String(name || "").trim()).filter(Boolean))];
+  const symbols = [...new Set([...journaledAssets, ...SUGGESTED_SYMBOLS])];
+  const latest = market.latest;
 
   return (
-    <section className="market-header-panel">
-      <div className="market-header-main">
+    <section className="market-workspace-card market-data-header">
+      <div className="market-data-heading">
         <div>
-          <p className="eyebrow">MARKET CONTEXT</p>
-          <label className="asset-selector-label" htmlFor="dashboard-asset">Selected asset</label>
-          <div className="asset-selector-row">
-            <input id="dashboard-asset" value={asset} onChange={(event) => onAssetChange(event.target.value.toUpperCase())} placeholder="Enter symbol" />
-            <h2>{hasAsset ? market.asset : asset || "Selected market"}</h2>
-          </div>
-          <p className="market-header-state">
-            {hasPrice ? "Market data received" : "Market data unavailable"}
-          </p>
+          <p className="eyebrow">MARKET OVERVIEW · HISTORICAL DATA</p>
+          <label className="market-symbol-label" htmlFor="market-symbol">Selected symbol</label>
+          <input
+            id="market-symbol"
+            list="market-symbol-suggestions"
+            value={asset}
+            onChange={(event) => onAssetChange(event.target.value)}
+            placeholder="Enter a ticker"
+            autoComplete="off"
+          />
+          <datalist id="market-symbol-suggestions">
+            {symbols.map((symbol) => <option key={symbol} value={symbol} />)}
+          </datalist>
         </div>
-        <div className="market-price-block">
-          <strong>{hasPrice ? market.price : "--"}</strong>
-          <span className={market.changeDirection === "positive" ? "status-positive" : "status-neutral"}>
-            {hasPrice && !unavailable(market.change) ? market.change : "Price change unavailable"}
+        <div className="market-latest-price">
+          <strong>{latest ? formatPrice(latest.price) : "--"}</strong>
+          <span className={latest?.change > 0 ? "market-positive" : latest?.change < 0 ? "market-negative" : ""}>
+            {latest
+              ? `${formatChange(latest.change)} (${formatChange(latest.changePercent, true)})`
+              : "Price change unavailable"}
           </span>
         </div>
       </div>
-      <div className="market-context-grid">
-        <div><span>Market / session</span><strong>{market.session || "Waiting for data"}</strong></div>
-        <div><span>Market status</span><strong className="status-neutral">{market.status || "Data unavailable"}</strong></div>
-        <div><span>Data</span><strong>{market.freshness || "Unavailable"}</strong></div>
-        <div><span>Last update</span><strong>{market.updated || "--"}</strong></div>
+      <div className="market-data-toolbar">
+        <div className="market-timeframe-chips" aria-label="Market timeframe">
+          {MARKET_TIMEFRAMES.map((item) => (
+            <button
+              type="button"
+              key={item}
+              aria-pressed={timeframe === item}
+              className={timeframe === item ? "selected" : ""}
+              onClick={() => onTimeframeChange(item)}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+        <button type="button" className="market-refresh-btn" onClick={market.refresh} disabled={market.status === "loading"}>
+          {market.status === "loading" ? "Loading…" : "Refresh"}
+        </button>
       </div>
-      <SourceMeta source={market.source} updated={market.updated} status={market.freshness || "Unavailable"} />
+      <div className="market-data-meta">
+        <span>Session at last bar: {activeSession(latest?.timestamp)}</span>
+        <span>Last bar: {formatUtc(market.lastBar)} · historical bars</span>
+        <span>Source: {market.source}</span>
+        {market.cached && <span>Cached within the last 5 minutes</span>}
+      </div>
     </section>
   );
 }
 
-function ScoreGauge({ value }) {
-  const numericValue = Number.isFinite(Number(value)) ? Math.max(0, Math.min(100, Number(value))) : null;
-  const chartData = [{ name: "Score", value: numericValue ?? 0, fill: "var(--color-gold)" }];
-
+function LoadingState() {
   return (
-    <div className="score-gauge-shell" aria-label={numericValue !== null ? `Market trading score ${numericValue} out of 100` : "Market trading score unavailable"}>
-      <ResponsiveContainer width="100%" height={160}>
-        <RadialBarChart
-          data={chartData}
-          innerRadius="58%"
-          outerRadius="100%"
-          barSize={16}
-          startAngle={180}
-          endAngle={0}
-          cx="50%"
-          cy="58%"
-        >
-          <PolarAngleAxis type="number" domain={[0, 100]} tick={false} axisLine={false} />
-          <RadialBar background clockWise dataKey="value" cornerRadius={10} fill="var(--color-gold)" />
-        </RadialBarChart>
-      </ResponsiveContainer>
-      <div className="score-gauge-center">
-        <strong>{numericValue ?? "--"}</strong>
-        <span>/ 100</span>
+    <div className="market-loading-state" role="status" aria-label="Loading historical market data">
+      <div className="market-shimmer market-shimmer-wide" />
+      <div className="market-loading-grid">
+        <div className="market-shimmer" />
+        <div className="market-shimmer" />
+        <div className="market-shimmer" />
       </div>
+      <div className="market-shimmer market-shimmer-tall" />
     </div>
   );
 }
 
-function ScoreBreakdownChart({ items = [] }) {
-  if (!items.length) {
+function MarketDataState({ market, onPageChange }) {
+  if (market.status === "loading") return <LoadingState />;
+  if (market.status === "error") {
     return (
-      <div className="chart-empty-state">
-        <span>Awaiting score data</span>
-      </div>
+      <section className="market-workspace-card market-empty-state" role="alert">
+        <h2>Historical market data could not be loaded</h2>
+        <p>{market.error}</p>
+        {market.error.startsWith("Rate limit:") && <p>Rate-limit response received from the historical data provider.</p>}
+        {market.triedSymbols?.length > 0 && <small>Symbols tried: {market.triedSymbols.join(", ")}</small>}
+        <button type="button" className="market-action-link" onClick={market.refresh}>Retry</button>
+      </section>
     );
   }
+  if (market.status === "nodata") {
+    return (
+      <section className="market-workspace-card market-empty-state">
+        <h2>No data for this symbol on the current data plan</h2>
+        <p>Try a supported symbol for your plan. Availability can vary by asset class.</p>
+        <p className="market-suggestions">Suggested tickers: {SUGGESTED_SYMBOLS.join(", ")}</p>
+        <button type="button" className="market-action-link" onClick={() => onPageChange("Chart")}>Open Chart tab</button>
+      </section>
+    );
+  }
+  return null;
+}
 
-  const data = items.map((item) => ({
-    name: item.label,
-    value: Number.isFinite(Number(item.value)) ? Number(item.value) : 0,
-  }));
-
+function ComponentRows({ components, detail = false }) {
   return (
-    <div className="score-breakdown-chart">
-      <ResponsiveContainer width="100%" height={120}>
-        <PieChart>
-          <Pie data={data} dataKey="value" innerRadius={24} outerRadius={46} paddingAngle={2} stroke="transparent">
-            {data.map((entry, index) => (
-              <Cell key={`${entry.name}-${index}`} fill={index % 2 === 0 ? "var(--color-gold)" : "#e0e7f0"} />
-            ))}
-          </Pie>
-        </PieChart>
-      </ResponsiveContainer>
+    <div className={detail ? "market-component-list market-component-list-detail" : "market-component-list"}>
+      {components.map((item) => {
+        const percent = Math.max(0, Math.min(100, Number(item.score) || 0));
+        const explanation = MARKET_SCORE_EXPLANATIONS[item.key];
+        return (
+          <details className="market-component-row" key={item.key}>
+            <summary>
+              <span>{item.label}</span>
+              <span className="market-component-meter" aria-label={`${item.score} out of 100`}>
+                <span style={{ width: `${percent}%` }} />
+              </span>
+              <strong>{item.available ? `${item.score} / 100` : "Unavailable"}</strong>
+            </summary>
+            <div className="market-component-reading">
+              <p>{item.value}</p>
+              <p>{item.explanation}</p>
+              {detail && item.direction !== null && (
+                <p>Direction: {item.direction > 0 ? "Upward" : item.direction < 0 ? "Downward" : "Mixed"}.</p>
+              )}
+              {explanation && (
+                <details className="market-meaning">
+                  <summary>What does it mean?</summary>
+                  <p>{explanation.text}</p>
+                </details>
+              )}
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
 
-function MarketTradingScore({ score }) {
-  const [showDetails, setShowDetails] = useState(false);
-  const hasScore = !unavailable(score.value);
-
-  const breakdown = scoreFactors
-    .map((factor) => ({
-      label: factor.label,
-      value: score.factors?.[factor.label],
-      maximum: factor.maximum,
-    }))
-    .filter((item) => !unavailable(item.value));
-
+function MarketTradingScore({ result }) {
+  const availableCount = result?.components?.filter(({ available }) => available).length || 0;
+  const score = result?.available ? result.score : null;
   return (
-    <section className="score-panel overview-score-panel">
-      <div className="score-summary">
+    <section className="market-workspace-card market-score-card">
+      <div className="market-score-heading">
         <div>
           <p className="eyebrow">MARKET TRADING SCORE</p>
-          <h2>How favorable is this environment for short-term trading?</h2>
-          <p className="score-disclaimer">Decision support only — not a price-direction prediction.</p>
+          <h2>{score === null ? "Score unavailable" : `${score} / 100 · ${result.band}`}</h2>
+          <p>How favorable is this environment for short-term trading? Decision support only, not a prediction.</p>
         </div>
+        <strong className="market-score-number">{score ?? "--"}</strong>
       </div>
-      <div className="overview-score-body">
-        <ScoreGauge value={score.value} />
-        <div className="score-factor-list">
-          {scoreFactors.map((factor) => {
-            const factorValue = score.factors?.[factor.label];
-            return (
-              <div className="score-factor-row" key={factor.label}>
-                <span>{factor.label}</span>
-                <strong>{unavailable(factorValue) ? "--" : `${factorValue}${factor.maximum ? ` / ${factor.maximum}` : ""}`}</strong>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-      <div className="score-footer">
-        <span>{score.confidence || "Awaiting market data and analysis"}</span>
-        <button className="text-button" type="button" onClick={() => setShowDetails((visible) => !visible)}>
-          {showDetails ? "Hide score details" : "View score details"}
-        </button>
-      </div>
-      {showDetails && (
-        <div className="score-details">
-          {scoreFactors.map((factor) => {
-            const factorValue = score.factors?.[factor.label];
-            return (
-              <div className="score-factor" key={factor.label}>
-                <span>{factor.label}</span>
-                <strong>{unavailable(factorValue) ? "--" : `${factorValue} / ${factor.maximum || "--"}`}</strong>
-                <small>{unavailable(factorValue) ? "Awaiting analysis" : "Provider value"}</small>
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="overview-score-chart-wrap">
-        <ScoreBreakdownChart items={breakdown} />
-      </div>
-      <SourceMeta source={score.source} updated={score.updated} status={hasScore ? score.status : "Unavailable"} />
+      <p className="market-component-count">Based on {availableCount} of 5 components</p>
+      {result?.reasons?.map((reason) => <p className="market-score-reason" key={reason}>{reason}</p>)}
+      {result?.components?.length > 0 && <ComponentRows components={result.components} />}
+      <p className="market-score-omissions">Not included yet: event risk, cross-market context, sentiment.</p>
     </section>
   );
 }
 
-function MarketConditions({ conditions }) {
-  function renderMetric(field) {
-    const value = conditions?.[field.key];
-    const tone = conditions?.[`${field.key}Tone`] || "unavailable";
-
-    return (
-      <div className={`condition-card condition-${tone}`} key={field.key}>
-        <span>{field.label}</span>
-        <strong>{unavailable(value) ? "N/A" : value}</strong>
-        <small>{unavailable(value) ? "Waiting for data" : "Provider value"}</small>
-      </div>
-    );
-  }
-
-  return (
-    <section className="decision-panel conditions-module">
-      <SectionHeader eyebrow="MARKET CONDITIONS" title="Current intraday environment" description="Primary conditions first, supporting metrics below." status="Awaiting data" icon="01" />
-      <div className="condition-overview-row">
-        <div className="condition-overview-label"><span>Overall condition</span><strong>Unavailable</strong><small>Requires normalized market analysis</small></div>
-        <div className="condition-primary-grid">{primaryConditionFields.map(renderMetric)}</div>
-      </div>
-      <div className="condition-secondary-group">
-        <div className="subsection-label"><span>Supporting metrics</span><small>Volume, price context, and session detail</small></div>
-        <div className="condition-grid condition-secondary-grid">{secondaryConditionFields.map(renderMetric)}</div>
-      </div>
-      <SourceMeta source={conditions?.source} updated={conditions?.updated} />
-    </section>
-  );
+function BiasSummary({ result }) {
+  if (!result) return "Unavailable";
+  const aligned = Object.entries(result.biasDetail || {})
+    .filter(([, direction]) => (
+      result.bias === "Bullish" ? direction === 1 : result.bias === "Bearish" && direction === -1
+    ))
+    .map(([key]) => COMPONENT_LABELS[key]);
+  return aligned.length
+    ? `${result.bias} · aligned: ${aligned.join(", ")}`
+    : `${result.bias} · trend, structure, and momentum do not all agree`;
 }
 
-function MarketStructure({ conditions }) {
-  return (
-    <section className="decision-panel structure-module">
-      <SectionHeader eyebrow="MARKET STRUCTURE" title="Technical map of the session" description="Levels and setup elements stay separate from broader market conditions." status="Chart analysis pending" icon="02" />
-      <div className="structure-block">
-        <div className="subsection-label"><span>Swing structure</span><small>Higher highs and lower lows</small></div>
-        <div className="structure-level-grid">
-          {structureFields.slice(0, 4).map(([label, key]) => <div className="structure-level" key={key}><span>{label}</span><strong>{conditions?.[key] || "--"}</strong></div>)}
-        </div>
-      </div>
-      <div className="structure-block">
-        <div className="subsection-label"><span>Liquidity and setup elements</span><small>Detected, inferred, or uncertain</small></div>
-        <div className="structure-diagnostic-grid">
-          {structureFields.slice(4).map(([label, key]) => <div className="structure-diagnostic" key={key}><span>{label}</span><strong>{conditions?.[key] || "Waiting"}</strong></div>)}
-        </div>
-      </div>
-      <SourceMeta source={conditions?.source} updated={conditions?.updated} />
-    </section>
-  );
-}
-
-function QuickAccess({ onPageChange }) {
-  const links = [
-    ["Markets", "Market"],
-    ["Events & News", "Events & News"],
-    ["Technicals", "Technicals"],
-    ["Strategy", "Strategy"],
-    ["Chart", "Chart"],
-  ];
-
-  return (
-    <div className="quick-access">
-      <span className="subsection-label">Continue to</span>
-      <div>{links.map(([page, label]) => <button type="button" className="quick-access-link" key={page} onClick={() => onPageChange(page)}>{label}<span aria-hidden="true">→</span></button>)}</div>
+function SetupCard({ checklist, onPageChange }) {
+  return checklist ? (
+    <div>
+      <strong>{checklist.score.met} of {checklist.score.total} conditions · {checklist.band}</strong>
+      <small>{checklist.strategy.name} · v{checklist.version.version}</small>
+    </div>
+  ) : (
+    <div>
+      <strong>No saved checklist</strong>
+      <button type="button" className="market-inline-link" onClick={() => onPageChange("Strategy")}>
+        Run your checklist in the Strategy tab
+      </button>
     </div>
   );
 }
 
-function OverviewPage({ market, strategy, selectedAsset, onAssetChange, onPageChange, score }) {
+function decisionText(result, checklist) {
+  if (!result?.available) return "Historical data is not sufficient for a market-environment assessment.";
+  if (result.band === "Unfavorable") return "The current environment-quality reading is unfavorable; this assessment alone does not establish whether a setup is suitable.";
+  if (!checklist) return `The environment is ${result.band.toLowerCase()}, but a strategy checklist has not been run for its latest saved version.`;
+  if (checklist.band === "Ready") return `The environment is ${result.band.toLowerCase()} and the saved checklist is marked ready; review the underlying bars and your own criteria.`;
+  if (checklist.band === "Not ready") return `The environment is ${result.band.toLowerCase()}, while required checklist conditions remain unmet.`;
+  return `The environment is ${result.band.toLowerCase()} and your checklist is partial — remaining conditions are not confirmed.`;
+}
+
+function OverviewPage({ market, trades, strategyLibrary, selectedAsset, onAssetChange, onTimeframeChange, timeframe, onPageChange }) {
   const [showMore, setShowMore] = useState(false);
-  const status = market.status || "WAITING FOR DATA";
-  const direction = market.bias || "Unavailable";
-
-  const recommendation =
-    strategy.state === "TRADE"
-      ? "Trade only with strong confirmation."
-      : strategy.state === "WAIT"
-        ? "Wait for cleaner confirmation."
-        : strategy.state === "AVOID"
-          ? "Avoid fresh entries for now."
-          : status === "Bullish"
-            ? "Conditions are constructive, but wait for confirmation."
-            : status === "Bearish"
-              ? "Risk is elevated; wait for a clearer setup."
-              : "Market is unclear. Wait for better confirmation.";
-
+  const checklist = useMemo(() => readLastUsedSetupChecklist(strategyLibrary), [strategyLibrary]);
+  const result = market.result;
   return (
     <>
-      <div className="overview-primary-row">
-        <MarketHeader market={market} asset={selectedAsset} onAssetChange={onAssetChange} />
-        <div className="overview-score-stack">
-          <MarketTradingScore score={score} />
-          <div className="overview-action-card">
-            <p className="eyebrow">WHAT SHOULD I DO?</p>
-            <strong>{recommendation}</strong>
-            <small>{strategy.state ? `Setup: ${strategy.state}` : "Setup signal waiting for data"}</small>
-          </div>
-        </div>
-      </div>
-
-      <section className="overview-status-strip">
-        <div><span>Market status</span><strong>{status}</strong><small>{market.statusReason || "Market data pending"}</small></div>
-        <div><span>Bias</span><strong>{direction}</strong><small>Separate from score</small></div>
-        <div><span>Setup</span><strong>{strategy.state || "Unavailable"}</strong><small>{strategy.score ? `Score ${strategy.score}` : "Waiting"}</small></div>
-      </section>
-
-      <div className="overview-toggle-row">
-        <button type="button" className="secondary-btn overview-toggle-btn" onClick={() => setShowMore((value) => !value)}>
-          {showMore ? "Hide more detail" : "See more detail"}
-        </button>
-      </div>
-
-      {showMore && (
-        <div className="overview-detail-panel">
-          <div className="overview-insights-grid">
-            <section className="overview-factors">
-              <div className="overview-factors-heading"><div><p className="eyebrow">TOP 3 THINGS TO KNOW</p><h2>What deserves attention first</h2></div><span className="section-status">Priority view</span></div>
-              <ol>
-                {(market.topFactors || []).slice(0, 3).map((factor, index) => <li key={factor.id || factor.text || index}><span>{index + 1}</span><strong>{factor.text || factor}</strong><small>{factor.context || "Provider context unavailable"}</small></li>)}
-                {(!market.topFactors || market.topFactors.length === 0) && <li className="overview-factor-empty"><span>--</span><strong>Waiting for normalized market analysis</strong><small>The three highest-priority factors will appear here when data is connected.</small></li>}
-              </ol>
-            </section>
-            <section className="overview-meaning">
-              <div><p className="eyebrow">WHAT DOES THIS MEAN?</p><h2>{market.interpretationTitle || "Waiting for sufficient market data"}</h2></div>
-              <p>{market.interpretation || "The Overview will translate market conditions, risk, and setup readiness into a concise trading context when analysis data is available."}</p>
-              <div className="overview-meaning-tags"><span>{market.bias || "Bias unavailable"}</span><span>{market.risk || "Risk unavailable"}</span><span>{market.confirmation || "Confirmation unavailable"}</span></div>
+      <MarketHeader market={market} asset={selectedAsset} trades={trades} onAssetChange={onAssetChange} timeframe={timeframe} onTimeframeChange={onTimeframeChange} />
+      <MarketDataState market={market} onPageChange={onPageChange} />
+      {market.status === "ready" && (
+        <>
+          <div className="market-overview-grid">
+            <MarketTradingScore result={result} />
+            <section className="market-workspace-card market-action-card">
+              <p className="eyebrow">WHAT SHOULD I DO?</p>
+              <p>{decisionText(result, checklist)}</p>
+              <small>Decision support. Not advice.</small>
             </section>
           </div>
-
-          <section className="overview-readiness">
-            <div><p className="eyebrow">SETUP READINESS</p><h2>Does the current setup match your strategy?</h2><p>{strategy.state || "Setup analysis is waiting for chart data."}</p></div>
-            <div className="overview-readiness-score"><span>SETUP SCORE</span><strong>{strategy.score || "--"}</strong><small>Independent from Market Trading Score</small></div>
-            <button type="button" className="secondary-btn" onClick={() => onPageChange("Strategy")}>View Strategy Analysis <span aria-hidden="true">→</span></button>
+          <section className="market-workspace-card market-status-strip">
+            <div><span>Market status</span><strong>{result?.band || "Unavailable"}</strong><small>Environment quality, not price direction</small></div>
+            <div><span>Bias</span><strong>{result?.bias || "Unavailable"}</strong><small>{BiasSummary({ result })}</small></div>
+            <div><span>Setup</span><SetupCard checklist={checklist} onPageChange={onPageChange} /></div>
           </section>
-        </div>
+          <button type="button" className="market-action-link market-more-button" onClick={() => setShowMore((visible) => !visible)}>
+            {showMore ? "Hide more detail" : "See more detail"}
+          </button>
+          {showMore && (
+            <section className="market-workspace-card market-more-detail">
+              <h2>What does this mean?</h2>
+              <p>Observed historical bars feed the component readings above. The score summarizes environment quality; directional bias is separate, and neither is a forecast. Incomplete or unavailable components reduce the evidence available for interpretation.</p>
+              <button type="button" className="market-action-link" onClick={() => onPageChange("Markets")}>See full market detail</button>
+            </section>
+          )}
+          <nav className="market-continue-links" aria-label="Continue to">
+            <span>Continue to</span>
+            {["Markets", "Strategy", "Chart", "Events & News", "Technicals"].map((page) => (
+              <button type="button" key={page} onClick={() => onPageChange(page)}>{page} <span aria-hidden="true">→</span></button>
+            ))}
+          </nav>
+        </>
       )}
-
-      <QuickAccess onPageChange={onPageChange} />
     </>
   );
 }
 
-function MarketPage({ market, conditions, selectedAsset, onAssetChange }) {
+function KeyLevels({ levels }) {
+  const rows = [
+    ["Previous-day high", levels.previousDayHigh],
+    ["Previous-day low", levels.previousDayLow],
+    ["Previous-day close", levels.previousDayClose],
+    ["Current-day open", levels.currentDayOpen],
+    ["Current-day high", levels.currentDayHigh],
+    ["Current-day low", levels.currentDayLow],
+    ["Latest swing high", levels.latestSwingHigh],
+    ["Latest swing low", levels.latestSwingLow],
+    ["ATR14", levels.atr14],
+  ];
+  return (
+    <section className="market-workspace-card">
+      <div className="market-section-title"><h2>Key levels</h2><small>Source: {MARKET_DATA_SOURCE} · UTC day boundaries</small></div>
+      <div className="market-level-table">
+        {rows.map(([label, value]) => (
+          <div key={label}><span>{label}</span><strong>{Number.isFinite(value) ? formatPrice(value) : "Unavailable"}</strong></div>
+        ))}
+      </div>
+      <small className="market-utc-note">Previous and current day use UTC boundaries; values are calculated from the displayed historical bars.</small>
+    </section>
+  );
+}
+
+function MarketPage({ market, trades, selectedAsset, onAssetChange, timeframe, onTimeframeChange, onPageChange }) {
   return (
     <>
-      <MarketHeader market={market} asset={selectedAsset} onAssetChange={onAssetChange} />
-      <div className="workspace-page-heading"><p className="eyebrow">MARKET DETAIL</p><h1>Market conditions and structure</h1><p>Move from the current state into the technical evidence behind it.</p></div>
-      <div className="dashboard-v2-grid dashboard-v2-grid-structure"><MarketConditions conditions={conditions} /><MarketStructure conditions={conditions} /></div>
-      <section className="market-context-placeholder"><SectionHeader eyebrow="MARKET CONTEXT" title="Cross-market context" description="Indexes, futures, DXY, VIX, yields, sectors, and correlations will appear here when providers are connected." status="Unavailable" icon="03" /><UnavailableState title="Market context data unavailable" description="No correlated-asset values are being inferred without a connected provider." /></section>
+      <MarketHeader market={market} asset={selectedAsset} trades={trades} onAssetChange={onAssetChange} timeframe={timeframe} onTimeframeChange={onTimeframeChange} />
+      <div className="market-page-heading"><p className="eyebrow">MARKET DETAIL</p><h2>Historical conditions and levels</h2></div>
+      <MarketDataState market={market} onPageChange={onPageChange} />
+      {market.status === "ready" && (
+        <>
+          <MarketTradingScore result={market.result} />
+          <section className="market-workspace-card">
+            <div className="market-section-title">
+              <div><p className="eyebrow">COMPONENT DETAIL</p><h2>Evidence from the selected historical bars</h2></div>
+              <small>Source: {market.source} · Last bar: {formatUtc(market.lastBar)}</small>
+            </div>
+            <ComponentRows components={market.result?.components || []} detail />
+          </section>
+          {market.levels && <KeyLevels levels={market.levels} />}
+          <section className="market-workspace-card market-cross-market">
+            <h2>Cross-market context</h2>
+            <p>Not connected yet. No related-asset values are inferred.</p>
+            <small>Source: no cross-market provider connected · unavailable</small>
+          </section>
+        </>
+      )}
     </>
   );
 }
@@ -406,22 +346,50 @@ function DayTradingDashboard({
   onAskCoach,
   onViewTrade,
   selectedAsset = "",
-  onAssetChange,
+  onAssetChange = () => {},
+  marketTimeframe = "1h",
+  onMarketTimeframeChange = () => {},
   onPageChange = () => {},
 }) {
-  const market = {};
-  const score = {};
-  const conditions = {};
-  const strategy = {};
+  const market = useMarketData(selectedAsset, marketTimeframe);
 
   return (
     <div className="day-trading-dashboard">
       <header className="topbar dashboard-v2-header">
-        <div><p className="eyebrow">DAY TRADING / {page.toUpperCase()}</p><h1>{page === "Overview" ? "What is happening right now?" : page}</h1><p className="dashboard-v2-subtitle">{page === "Overview" ? "Understand current market conditions before you decide to trade, wait, or avoid." : "A focused workspace for the next layer of your trading process."}</p></div>
+        <div>
+          <p className="eyebrow">DAY TRADING / {page.toUpperCase()}</p>
+          <h1>{page === "Overview" ? "What is happening right now?" : page}</h1>
+          <p className="dashboard-v2-subtitle">
+            {page === "Overview"
+              ? "Understand historical market conditions before interpreting the current environment."
+              : "A focused workspace for the next layer of your trading process."}
+          </p>
+        </div>
         {page === "Overview" && <div className="dashboard-v2-actions"><button className="add-trade-btn" type="button" onClick={onAddTrade}>+ Add Trade</button></div>}
       </header>
-      {page === "Overview" && <OverviewPage market={market} strategy={strategy} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} score={score} />}
-      {page === "Markets" && <MarketPage market={market} conditions={conditions} selectedAsset={selectedAsset} onAssetChange={onAssetChange} />}
+      {page === "Overview" && (
+        <OverviewPage
+          market={market}
+          trades={trades}
+          strategyLibrary={strategyLibrary}
+          selectedAsset={selectedAsset}
+          onAssetChange={onAssetChange}
+          onTimeframeChange={onMarketTimeframeChange}
+          timeframe={marketTimeframe}
+          onPageChange={onPageChange}
+        />
+      )}
+      {page === "Markets" && (
+        <MarketPage
+          market={market}
+          trades={trades}
+          selectedAsset={selectedAsset}
+          onAssetChange={onAssetChange}
+          timeframe={marketTimeframe}
+          onTimeframeChange={onMarketTimeframeChange}
+          onPageChange={onPageChange}
+        />
+      )}
       {page === "Strategy" && <StrategyWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} onLogTrade={onLogTrade} onAskCoach={onAskCoach} />}
       {page === "Chart" && <ChartWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onViewTrade={onViewTrade} onPageChange={onPageChange} />}
     </div>

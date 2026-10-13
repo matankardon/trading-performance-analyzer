@@ -6,13 +6,18 @@ import { fetchHistoricalBars } from "../services/historicalDataService";
 import { compareForwardToBacktest, computeForwardStats, computeTradeStats } from "../services/forwardTestStats";
 import { ruleBreakCost } from "../services/coachingAnalysis";
 import { calculateTradePlan } from "../services/tradePlan";
-import { bandFromScore, computeSetupScore, matchingTrades, missingRequired } from "../services/setupChecklist";
+import {
+  bandFromScore,
+  computeSetupScore,
+  matchingTrades,
+  missingRequired,
+  SETUP_CHECKLIST_STORAGE_KEY,
+} from "../services/setupChecklist";
 import { copySetupSnapshot, downloadSetupSnapshot, normalizeSetupSnapshot } from "../services/setupSnapshot";
 import StrategyPositionSize from "./StrategyPositionSize";
 import { readSymbolMap, resolveChartSymbol } from "../services/symbolMap";
 import "./TradingWorkspaces.css";
 
-const CHECKLIST_STORAGE_KEY = "tradeCatalystSetupChecklist";
 const SESSIONS = ["New York", "London", "Asia", "Overlap"];
 const PRICE_RANGE_DAYS = 30;
 const EMPTY_CHECKED = Object.freeze({});
@@ -180,7 +185,7 @@ export default function StrategyWorkspace({
     const fallback = selectedAsset || "";
     return resolveChartSymbol(fallback, symbolMap) || fallback.toUpperCase();
   });
-  const [checklists, setChecklists] = useState(() => storageRead(CHECKLIST_STORAGE_KEY));
+  const [checklists, setChecklists] = useState(() => storageRead(SETUP_CHECKLIST_STORAGE_KEY));
   const [marketState, setMarketState] = useState({ symbol: "", bars: [], error: "" });
   const [savedBacktests, setSavedBacktests] = useState([]);
   const [positionPlan, setPositionPlan] = useState({ ...EMPTY_PLAN });
@@ -196,8 +201,11 @@ export default function StrategyWorkspace({
   const sessionObserved = Boolean(currentChecklist.sessionObserved);
 
   useEffect(() => {
-    storageWrite(CHECKLIST_STORAGE_KEY, checklists);
-  }, [checklists]);
+    storageWrite(SETUP_CHECKLIST_STORAGE_KEY, {
+      ...checklists,
+      ...(version?.id ? { __lastUsedVersionId: version.id } : {}),
+    });
+  }, [checklists, version?.id]);
 
   useEffect(() => {
     if (!symbol) return undefined;

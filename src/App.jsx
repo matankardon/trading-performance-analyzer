@@ -72,6 +72,7 @@ function App() {
   const [activeMode, setActiveMode] = useState("DAY TRADING");
   const [activePage, setActivePage] = useState("Overview");
   const [selectedAsset, setSelectedAsset] = useState(savedChartSymbol);
+  const [marketTimeframe, setMarketTimeframe] = useState("1h");
   const [strategyLibrary, setStrategyLibrary] = useState([]);
   const [coachInitialPrompt, setCoachInitialPrompt] = useState("");
 
@@ -917,6 +918,8 @@ function App() {
         onViewTrade={setSelectedTrade}
         selectedAsset={selectedAsset || defaultAsset}
         onAssetChange={setSelectedAsset}
+        marketTimeframe={marketTimeframe}
+        onMarketTimeframeChange={setMarketTimeframe}
         onPageChange={setActivePage}
       />
     );

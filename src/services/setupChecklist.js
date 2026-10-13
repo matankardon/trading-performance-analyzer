@@ -1,9 +1,40 @@
 import { INDICATORS, SETUP_CONDITIONS } from "../constants/strategyOptions";
 
+export const SETUP_CHECKLIST_STORAGE_KEY = "tradeCatalystSetupChecklist";
 export const SETUP_SCORE_BANDS = Object.freeze({
   ready: 80,
   partial: 40,
 });
+
+export function readLastUsedSetupChecklist(strategyLibrary) {
+  let persisted;
+  try {
+    persisted = JSON.parse(localStorage.getItem(SETUP_CHECKLIST_STORAGE_KEY) || "{}");
+  } catch {
+    return null;
+  }
+  if (!persisted || typeof persisted !== "object" || Array.isArray(persisted)) return null;
+
+  const allVersions = (Array.isArray(strategyLibrary) ? strategyLibrary : []).flatMap((strategy) => (
+    (Array.isArray(strategy?.versions) ? strategy.versions : [])
+      .map((version) => ({ strategy, version }))
+  ));
+  const selected = allVersions.find(({ version }) => version.id === persisted.__lastUsedVersionId)
+    || allVersions.find(({ version }) => Object.hasOwn(persisted, version.id))
+    || null;
+  if (!selected || !Object.hasOwn(persisted, selected.version.id)) return null;
+
+  const checked = persisted[selected.version.id]?.checked || {};
+  const score = computeSetupScore(selected.version, checked);
+  const missing = missingRequired(selected.version, checked);
+  return {
+    ...selected,
+    checked,
+    score,
+    missing,
+    band: bandFromScore(score.score, missing.length > 0),
+  };
+}
 
 function declaredItems(version) {
   const conditions = version?.conditions ?? {};
