@@ -9,18 +9,14 @@ import {
   LineSeries,
   LineStyle,
 } from "lightweight-charts";
-import { supportedHistoricalTimeframes } from "../../supabase/functions/_shared/timeframe";
 import { INDICATORS } from "../constants/strategyOptions";
-import { fetchHistoricalBars, historicalAssetSuggestions } from "../services/historicalDataService";
+import { fetchHistoricalBars } from "../services/historicalDataService";
 import { priceLinesForTrade, tradesToMarkers } from "../services/chartOverlay";
 import {
   readSymbolMap,
   readTradingViewSymbolMap,
   resolveChartSymbol,
-  toTradingViewSymbol,
-  tradingViewSymbolAlternatives,
-  writeSymbolMap,
-  writeTradingViewSymbolMap,
+  resolveDefaultChartSelection,
 } from "../services/symbolMap";
 import { indicatorChipText, studiesForVersion } from "../services/tradingViewStudies";
 import TradingViewChart from "./TradingViewChart";
@@ -43,11 +39,9 @@ import {
 } from "../services/setupSnapshot";
 import "./TradingWorkspaces.css";
 
-const STORAGE_KEY = "tradeCatalystChartSelection";
 const VIEW_STORAGE_KEY = "tradeCatalystChartView";
-const SUPPORTED_TIMEFRAMES = supportedHistoricalTimeframes.map(({ value }) => value);
-const TIMEFRAME_LABELS = { "1m": "1m", "5m": "5m", "15m": "15m", "1h": "1h", "4h": "4h", "1d": "1D", "1w": "1W" };
-const TRADINGVIEW_INTERVALS = { "1m": "1", "5m": "5", "15m": "15", "1h": "60", "4h": "240", "1d": "D", "1w": "W" };
+const TRADINGVIEW_INTERVAL = "15";
+const HISTORICAL_TIMEFRAME = "15m";
 const RANGE_DAYS = { "1W": 7, "1M": 30, "3M": 90, "6M": 180 };
 const EMPTY_BARS = [];
 const CHART_COLORS = {
@@ -80,26 +74,6 @@ function dateRange(preset) {
   const start = new Date(end);
   start.setDate(start.getDate() - RANGE_DAYS[preset] + 1);
   return { startDate: localDate(start), endDate: localDate(end) };
-}
-
-function readSelection() {
-  try {
-    const value = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-    return {
-      symbol: typeof value.symbol === "string" ? value.symbol.toUpperCase() : "",
-      timeframe: typeof value.timeframe === "string" ? value.timeframe : "1d",
-    };
-  } catch {
-    return { symbol: "", timeframe: "1d" };
-  }
-}
-
-function writeSelection(value) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(value));
-  } catch {
-    // The chart remains usable when browser storage is unavailable.
-  }
 }
 
 function readChartView() {
@@ -475,15 +449,16 @@ export default function ChartWorkspace({
   onViewTrade = () => {},
   onPageChange = () => {},
 }) {
-  const [symbolMap, setSymbolMap] = useState(() => readSymbolMap());
-  const [tradingViewSymbolMap, setTradingViewSymbolMap] = useState(() => readTradingViewSymbolMap());
-  const [initial] = useState(() => readSelection());
-  const [assetInput, setAssetInput] = useState(() => selectedAsset || initial.symbol || "");
-  const [symbol, setSymbol] = useState(() => {
-    const fallback = selectedAsset || initial.symbol || "";
-    return resolveChartSymbol(fallback, symbolMap) || fallback.toUpperCase();
-  });
-  const [timeframe, setTimeframe] = useState(initial.timeframe);
+  const [symbolMap] = useState(() => readSymbolMap());
+  const [tradingViewSymbolMap] = useState(() => readTradingViewSymbolMap());
+  const [defaultSelection] = useState(() => resolveDefaultChartSelection(
+    selectedAsset,
+    trades,
+    symbolMap,
+    tradingViewSymbolMap,
+  ));
+  const [symbol, setSymbol] = useState(defaultSelection.chartSymbol);
+  const timeframe = HISTORICAL_TIMEFRAME;
   const [view, setView] = useState(readChartView);
   const [range, setRange] = useState("3M");
   const [requestState, setRequestState] = useState({ key: "", bars: [], error: "" });
@@ -493,10 +468,8 @@ export default function ChartWorkspace({
   const [strategyVersionChoice, setStrategyVersionChoice] = useState();
   const [crosshair, setCrosshair] = useState(null);
   const [focusTradeDate, setFocusTradeDate] = useState("");
-  const [pendingMapValue, setPendingMapValue] = useState("");
-  const [fallbackChartSymbol, setFallbackChartSymbol] = useState("");
-  const [symbolNotice, setSymbolNotice] = useState("");
   const [tradesExpanded, setTradesExpanded] = useState(false);
+  const [tradeAssetFilter, setTradeAssetFilter] = useState("all");
   const tradeDropdown = useRef(null);
   const requestId = useRef(0);
   const selectedStrategy = strategyLibrary.find(({ id }) => id === strategyId) || strategyLibrary[0] || null;
@@ -515,15 +488,6 @@ export default function ChartWorkspace({
     });
     return [...counts].sort((left, right) => right[1] - left[1]).map(([asset]) => asset);
   }, [trades]);
-  const userTradingViewMap = useMemo(
-    () => ({ ...symbolMap, ...tradingViewSymbolMap }),
-    [symbolMap, tradingViewSymbolMap],
-  );
-  const unresolvedJournalAsset = useMemo(
-    () => journalAssets.find((asset) => !resolveChartSymbol(asset, symbolMap) || !toTradingViewSymbol(asset, userTradingViewMap)),
-    [journalAssets, symbolMap, userTradingViewMap],
-  );
-  const symbols = useMemo(() => [...new Set([...journalAssets, ...historicalAssetSuggestions])], [journalAssets]);
   const selectedVersion = strategyVersions.find((version) => version.id === strategyVersionId) || null;
   const activeIndicators = useMemo(
     () => selectedVersion ? indicatorSpecs(selectedVersion) : [],
@@ -534,8 +498,7 @@ export default function ChartWorkspace({
     [selectedVersion],
   );
   const tradingViewStudies = tradingViewStudyMapping.studies;
-  const tradingViewSymbol = fallbackChartSymbol || toTradingViewSymbol(assetInput || symbol, userTradingViewMap);
-  const tradingViewAlternatives = tradingViewSymbolAlternatives(assetInput || symbol);
+  const tradingViewSymbol = defaultSelection.tradingViewSymbol;
   const bounds = useMemo(() => dateRange(range), [range]);
   const selectedTradeData = useMemo(() => {
     const mappedTrades = trades
@@ -552,17 +515,8 @@ export default function ChartWorkspace({
   const supportedSymbol = Boolean(resolveChartSymbol(symbol, symbolMap));
 
   useEffect(() => {
-    const next = { symbol, timeframe };
-    writeSelection(next);
-  }, [symbol, timeframe]);
-
-  useEffect(() => {
     writeChartView(view);
   }, [view]);
-
-  useEffect(() => {
-    if (tradingViewSymbol) console.debug("TradingView chart symbol:", tradingViewSymbol);
-  }, [tradingViewSymbol]);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -579,13 +533,9 @@ export default function ChartWorkspace({
     };
   }, []);
 
-  const invalidTimeframe = !SUPPORTED_TIMEFRAMES.includes(timeframe)
-    ? `Unsupported timeframe "${timeframe}". Supported timeframes: ${SUPPORTED_TIMEFRAMES.join(", ")}.`
-    : "";
   const requestKey = `${symbol}|${timeframe}|${bounds.startDate}|${bounds.endDate}|${refreshKey}`;
-  const loading = view === "my-trades" && Boolean(symbol.trim()) && !invalidTimeframe && requestState.key !== requestKey;
-  const error = invalidTimeframe
-    || (!supportedSymbol ? "Map this asset to a supported chart symbol before loading Massive bars." : "")
+  const loading = view === "my-trades" && Boolean(symbol.trim()) && supportedSymbol && requestState.key !== requestKey;
+  const error = (!supportedSymbol ? "Map this asset to a supported chart symbol before loading Massive bars." : "")
     || (requestState.key === requestKey ? requestState.error : "");
   const bars = view === "my-trades" && requestState.key === requestKey ? requestState.bars : EMPTY_BARS;
   const indicatorComputations = useMemo(() => activeIndicators.map((item) => {
@@ -601,7 +551,7 @@ export default function ChartWorkspace({
     }
   }), [activeIndicators, bars]);
   useEffect(() => {
-    if (view !== "my-trades" || !supportedSymbol || invalidTimeframe) return undefined;
+    if (view !== "my-trades" || !supportedSymbol) return undefined;
     const id = ++requestId.current;
     fetchHistoricalBars(symbol, timeframe, bounds.startDate, bounds.endDate)
       .then((result) => {
@@ -626,49 +576,7 @@ export default function ChartWorkspace({
         }
       });
     return () => { requestId.current += 1; };
-  }, [bounds, invalidTimeframe, refreshKey, requestKey, symbol, timeframe, supportedSymbol, view]);
-
-  function chooseSymbol(value) {
-    const raw = String(value ?? "").trim();
-    if (!raw) return;
-    setAssetInput(raw);
-    setFallbackChartSymbol("");
-    setSymbolNotice("");
-    const nextSymbol = resolveChartSymbol(raw, symbolMap);
-    setSymbol(nextSymbol || raw.toUpperCase());
-    onAssetChange(nextSymbol || raw);
-  }
-
-  function persistTradingViewSymbol(assetName, chartSymbol) {
-    if (!assetName || !chartSymbol) return;
-    const nextMap = { ...tradingViewSymbolMap, [assetName]: chartSymbol };
-    setTradingViewSymbolMap(nextMap);
-    setSymbolNotice(writeTradingViewSymbolMap(nextMap)
-      ? `Saved ${chartSymbol} for ${assetName}.`
-      : "Could not save the TradingView symbol mapping in this browser.");
-  }
-
-  function saveSymbolMap(assetName) {
-    const nextSymbol = String(pendingMapValue || "").trim();
-    if (!assetName || !nextSymbol) return;
-    const nextMap = { ...symbolMap, [assetName]: nextSymbol };
-    setSymbolMap(nextMap);
-    const saved = writeSymbolMap(nextMap);
-    const nextTradingViewMap = Object.fromEntries(
-      Object.entries(tradingViewSymbolMap).filter(([key]) => key !== assetName),
-    );
-    setTradingViewSymbolMap(nextTradingViewMap);
-    writeTradingViewSymbolMap(nextTradingViewMap);
-    setPendingMapValue("");
-    setAssetInput(assetName);
-    setFallbackChartSymbol("");
-    setSymbolNotice(saved ? "" : "Could not save the chart symbol mapping in this browser.");
-    const resolved = resolveChartSymbol(assetName, nextMap);
-    if (resolved) {
-      setSymbol(resolved);
-      onAssetChange(resolved);
-    }
-  }
+  }, [bounds, refreshKey, requestKey, symbol, timeframe, supportedSymbol, view]);
 
   function selectStrategy(nextStrategyId) {
     setStrategyId(nextStrategyId);
@@ -679,23 +587,27 @@ export default function ChartWorkspace({
   const symbolTrades = useMemo(() => trades.filter((trade) => (
     resolveChartSymbol(trade.asset, symbolMap) === symbol
   )), [trades, symbol, symbolMap]);
+  const filteredAssetTrades = useMemo(() => tradeAssetFilter === "all"
+    ? trades
+    : trades.filter((trade) => String(trade.asset ?? "").trim() === tradeAssetFilter),
+  [tradeAssetFilter, trades]);
   const dateFilteredTrades = useMemo(() => view === "my-trades"
-    ? symbolTrades.filter((trade) => hasValidTradeDate(trade) && storedDate(trade.date) >= bounds.startDate && storedDate(trade.date) <= bounds.endDate)
-    : symbolTrades, [bounds.endDate, bounds.startDate, symbolTrades, view]);
+    ? filteredAssetTrades.filter((trade) => hasValidTradeDate(trade) && storedDate(trade.date) >= bounds.startDate && storedDate(trade.date) <= bounds.endDate)
+    : filteredAssetTrades, [bounds.endDate, bounds.startDate, filteredAssetTrades, view]);
   const skipReasons = useMemo(() => ({
-    date: symbolTrades.filter((trade) => !hasValidTradeDate(trade)).length,
-    entry: symbolTrades.filter((trade) => hasValidTradeDate(trade) && (
+    date: filteredAssetTrades.filter((trade) => !hasValidTradeDate(trade)).length,
+    entry: filteredAssetTrades.filter((trade) => hasValidTradeDate(trade) && (
       view !== "my-trades" || (storedDate(trade.date) >= bounds.startDate && storedDate(trade.date) <= bounds.endDate)
     ) && finite(trade.entry) === null).length,
-    exit: symbolTrades.filter((trade) => hasValidTradeDate(trade) && (
+    exit: filteredAssetTrades.filter((trade) => hasValidTradeDate(trade) && (
       view !== "my-trades" || (storedDate(trade.date) >= bounds.startDate && storedDate(trade.date) <= bounds.endDate)
     ) && finite(trade.exit) === null).length,
-  }), [bounds.endDate, bounds.startDate, symbolTrades, view]);
+  }), [bounds.endDate, bounds.startDate, filteredAssetTrades, view]);
   const chartTradeList = dateFilteredTrades.slice().sort((left, right) => (
     `${storedDate(right.date)} ${right.time || ""}`.localeCompare(`${storedDate(left.date)} ${left.time || ""}`)
   ));
   const netPnl = chartTradeList.reduce((total, trade) => total + (finite(trade.pnl) || 0), 0);
-  const skippedTrades = symbolTrades.filter((trade) => (
+  const skippedTrades = filteredAssetTrades.filter((trade) => (
     !hasValidTradeDate(trade)
     || (hasValidTradeDate(trade) && (view !== "my-trades" || (
       storedDate(trade.date) >= bounds.startDate && storedDate(trade.date) <= bounds.endDate
@@ -703,71 +615,55 @@ export default function ChartWorkspace({
   )).length;
   const journaledVisibleTrades = showTrades ? selectedTradeData.trades : [];
   const availableIndicators = indicatorComputations;
-  const mapAsset = (!resolveChartSymbol(assetInput, symbolMap) || !toTradingViewSymbol(assetInput, userTradingViewMap))
-    ? assetInput
-    : unresolvedJournalAsset;
+
+  function selectTradeAsset(asset) {
+    setTradeAssetFilter(asset);
+    if (view !== "my-trades" || asset === "all") return;
+    const nextSymbol = resolveChartSymbol(asset, symbolMap) || asset.toUpperCase();
+    setSymbol(nextSymbol);
+    onAssetChange(asset);
+  }
 
   return (
     <div className="trading-workspace">
-      <section className="trading-workspace-card chart-toolbar">
-        <div className="chart-view-switch" role="group" aria-label="Chart view">
-          <button type="button" aria-pressed={view === "tradingview"} className={view === "tradingview" ? "selected" : ""} onClick={() => setView("tradingview")}>TradingView</button>
-          <button type="button" aria-pressed={view === "my-trades"} className={view === "my-trades" ? "selected" : ""} onClick={() => setView("my-trades")}>My trades</button>
-        </div>
-        <label className="chart-symbol-control">Ticker
-          <input aria-label="Symbol" list="chart-symbol-options" value={assetInput} onChange={(event) => { setAssetInput(event.target.value); setFallbackChartSymbol(""); setSymbolNotice(""); }} onKeyDown={(event) => { if (event.key === "Enter") chooseSymbol(assetInput); }} placeholder="Search journal assets or enter ticker" />
-          <datalist id="chart-symbol-options">{symbols.map((entry) => <option value={entry} key={entry} />)}</datalist>
-        </label>
-        <button type="button" className="add-trade-btn chart-go" onClick={() => chooseSymbol(assetInput)}>Go</button>
-        {mapAsset && <div className="chart-symbol-map">
-          <span>Map to chart symbol · {mapAsset}</span>
-          <input aria-label={`Map ${mapAsset} to chart symbol`} value={pendingMapValue} onChange={(event) => setPendingMapValue(event.target.value)} placeholder="e.g. NAS100 or OANDA:XAUUSD" />
-          <button type="button" onClick={() => saveSymbolMap(mapAsset)}>Save</button>
-        </div>}
-        <fieldset className="chart-timeframes"><legend>Timeframe</legend>{SUPPORTED_TIMEFRAMES.map((item) => <button key={item} type="button" className={timeframe === item ? "selected" : ""} aria-pressed={timeframe === item} onClick={() => setTimeframe(item)}>{TIMEFRAME_LABELS[item] || item}</button>)}</fieldset>
-        {view === "my-trades" && <>
-          <fieldset className="chart-range-picker"><legend>Date range</legend>{Object.keys(RANGE_DAYS).map((item) => <button key={item} type="button" className={range === item ? "selected" : ""} aria-pressed={range === item} onClick={() => setRange(item)}>{item}</button>)}</fieldset>
-          <button type="button" className="secondary-btn chart-refresh" onClick={() => setRefreshKey((value) => value + 1)}>Refresh</button>
-        </>}
-      </section>
-
-      {view === "my-trades" && <div className="chart-source-meta"><span>Source: Massive via historical-data</span><span>Last bar: {bars.length ? new Date(bars[bars.length - 1].timestamp).toLocaleString("en-US") : "--"}</span><span>Historical bars · not live quotes</span></div>}
-
       <section className="trading-workspace-card chart-strategy-toolbar" aria-label="Chart strategy studies">
         <label>Strategy<select aria-label="Strategy" value={selectedStrategy?.id || ""} onChange={(event) => selectStrategy(event.target.value)}>{strategyLibrary.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label>
         <label>Version<select aria-label="Strategy version" value={selectedVersion?.id || ""} onChange={(event) => setStrategyVersionChoice(event.target.value || null)}><option value="">Select a version</option>{strategyVersions.map((version) => <option key={version.id} value={version.id}>v{version.version}</option>)}</select></label>
-        <div className="chart-indicator-status">
-          <span>Studies · manual review</span>
-          {tradingViewStudyMapping.indicators.map((indicator) => <span className={`chart-indicator-chip ${indicator.status === "sent" ? "" : "unavailable"}`} key={indicator.key}>{indicatorChipText(indicator)}</span>)}
-          {tradingViewStudyMapping.manualConditions.map((condition) => <span className="chart-indicator-chip unavailable" key={condition.key}>{condition.label}: Check manually</span>)}
+        <div className="chart-strategy-status">
+          <div className="chart-indicator-status">
+            <span>Studies · manual review</span>
+            {tradingViewStudyMapping.indicators.map((indicator) => <span className={`chart-indicator-chip ${indicator.status === "sent" ? "" : "unavailable"}`} key={indicator.key}>{indicatorChipText(indicator)}</span>)}
+            {tradingViewStudyMapping.manualConditions.map((condition) => <span className="chart-indicator-chip unavailable" key={condition.key}>{condition.label}: Check manually</span>)}
+          </div>
           {tradingViewStudyMapping.manualOnly && <div className="chart-manual-indicators">
             <span>This strategy declares no chart indicators (only manual conditions). Add indicators in Strategy Lab to see them here.</span>
             <button type="button" className="secondary-btn" onClick={() => onPageChange("Strategy Lab")}>Open Strategy Lab</button>
           </div>}
           <span className="chart-muted-note chart-indicator-guidance">If an indicator isn’t visible, add it with the chart’s Indicators button.</span>
         </div>
+        <div className="chart-view-switch" role="group" aria-label="Chart view">
+          <button type="button" aria-pressed={view === "tradingview"} className={view === "tradingview" ? "selected" : ""} onClick={() => setView("tradingview")}>TradingView</button>
+          <button type="button" aria-pressed={view === "my-trades"} className={view === "my-trades" ? "selected" : ""} onClick={() => setView("my-trades")}>My trades</button>
+        </div>
       </section>
 
       <div className="chart-workspace-layout">
         <section className="trading-workspace-card chart-main-card" aria-label="Chart workspace">
           <div className="chart-card-heading">
-            <div><p className="eyebrow">{view === "tradingview" ? "TRADINGVIEW · EMBEDDED CHART" : "HISTORICAL PRICE"}</p><h2>{tradingViewSymbol || symbol || "Select a symbol"} · {TIMEFRAME_LABELS[timeframe] || timeframe}</h2>{view === "tradingview" && <p className="chart-resolved-symbol">Chart symbol: {tradingViewSymbol || "Not resolved"}</p>}</div>
-            {view === "my-trades" && <label className="chart-overlay-toggle"><input type="checkbox" checked={showTrades} onChange={(event) => setShowTrades(event.target.checked)} /> Journal markers</label>}
+            <div><p className="eyebrow">{view === "tradingview" ? "TRADINGVIEW · EMBEDDED CHART" : "HISTORICAL PRICE"}</p><h2>{view === "tradingview" ? "TradingView chart" : `${symbol} · ${timeframe}`}</h2></div>
+            {view === "my-trades" && <div className="chart-my-trades-controls">
+              <fieldset className="chart-range-picker"><legend>Date range</legend>{Object.keys(RANGE_DAYS).map((item) => <button key={item} type="button" className={range === item ? "selected" : ""} aria-pressed={range === item} onClick={() => setRange(item)}>{item}</button>)}</fieldset>
+              <button type="button" className="secondary-btn chart-refresh" onClick={() => setRefreshKey((value) => value + 1)}>Refresh</button>
+              <label className="chart-overlay-toggle"><input type="checkbox" checked={showTrades} onChange={(event) => setShowTrades(event.target.checked)} /> Journal markers</label>
+            </div>}
           </div>
-          {view === "tradingview" ? tradingViewSymbol
-            ? <TradingViewChart symbol={tradingViewSymbol} interval={TRADINGVIEW_INTERVALS[timeframe] || "D"} studies={tradingViewStudies} />
-            : <div className="chart-empty-state" role="alert"><strong>Map this asset to a TradingView symbol</strong><p>No reliable symbol mapping exists for “{assetInput}”. Enter a symbol mapping above; the chart will not substitute another instrument.</p></div>
+          {view === "tradingview"
+            ? <TradingViewChart symbol={tradingViewSymbol} interval={TRADINGVIEW_INTERVAL} studies={tradingViewStudies} />
             : <>
               {crosshair && <div className="chart-crosshair-readout" aria-live="polite"><span>{crosshair.date || "--"}</span><span>O {crosshair.open?.toFixed(2) ?? "--"}</span><span>H {crosshair.high?.toFixed(2) ?? "--"}</span><span>L {crosshair.low?.toFixed(2) ?? "--"}</span><span>C {crosshair.close?.toFixed(2) ?? "--"}</span>{crosshair.trade && <span>{crosshair.trade.direction} · {formatPnl(finite(crosshair.trade.pnl))} · {crosshair.trade.strategy || "Unassigned"}{crosshair.trade.versionNumber ? ` v${crosshair.trade.versionNumber}` : ""}</span>}</div>}
               {loading ? <div className="chart-loading-shimmer" role="status">Loading historical bars…</div> : error ? <div className="chart-empty-state" role="alert"><strong>Historical data unavailable</strong><p>{error}</p><button type="button" className="secondary-btn" onClick={() => setRefreshKey((value) => value + 1)}>Retry</button></div> : bars.length === 0 ? <div className="chart-empty-state"><strong>No bars in this range</strong><p>The provider returned no historical bars for {symbol} ({timeframe}, {bounds.startDate} to {bounds.endDate}).</p></div> : <ChartCanvas bars={bars} trades={journaledVisibleTrades} showTrades={showTrades} focusTradeDate={focusTradeDate} indicatorComputations={indicatorComputations.filter(({ output }) => output)} onViewTrade={onViewTrade} onCrosshair={setCrosshair} />}
             </>}
-          {view === "tradingview" && tradingViewSymbol && tradingViewAlternatives.length > 1 && <div className="chart-symbol-fallback">
-            <strong>Chart blank or “symbol doesn’t exist”? Try another feed</strong>
-            <div>{tradingViewAlternatives.filter((candidate) => candidate !== tradingViewSymbol).map((candidate) => <button type="button" className="secondary-btn" key={candidate} onClick={() => { setFallbackChartSymbol(candidate); setSymbolNotice(""); }}>Try {candidate}</button>)}
-              <button type="button" className="secondary-btn" onClick={() => persistTradingViewSymbol(assetInput || symbol, tradingViewSymbol)}>This works</button>
-            </div>
-            {symbolNotice && <small role="status">{symbolNotice}</small>}
-          </div>}
+          {view === "my-trades" && <div className="chart-source-meta"><span>Source: Massive via historical-data</span><span>Last bar: {bars.length ? new Date(bars[bars.length - 1].timestamp).toLocaleString("en-US") : "--"}</span><span>Historical bars · not live quotes</span></div>}
           {view === "my-trades" && availableIndicators.length > 0 && <div className="chart-indicator-status"><span>Selected version indicators</span>{availableIndicators.map(({ item, output, error: indicatorError }) => {
             const rendered = output?.pane === "price" ? "price chart" : output?.pane === "lower" ? "indicator pane" : "not computable";
             const status = output ? rendered : bars.length ? `not computable${indicatorError ? ` · ${indicatorError}` : ""}` : "waiting for bars";
@@ -782,11 +678,17 @@ export default function ChartWorkspace({
 
       <section className="trading-workspace-card chart-trades-list" ref={tradeDropdown}>
         <button type="button" className="chart-trades-trigger" aria-expanded={tradesExpanded} onClick={() => setTradesExpanded((expanded) => !expanded)}>
-          <span><small className="eyebrow">JOURNAL OVERLAY</small><strong>Trades on this chart · {chartTradeList.length} trades · net {formatPnl(netPnl)}</strong></span>
+          <span><small className="eyebrow">JOURNAL TRADES</small><strong>Trades on this chart · {chartTradeList.length} trades · net {formatPnl(netPnl)}</strong></span>
           <span className={`chart-trades-chevron ${tradesExpanded ? "expanded" : ""}`} aria-hidden="true">⌄</span>
         </button>
         {tradesExpanded && <div className="chart-trades-dropdown">
-          <p className="chart-trades-count">{chartTradeList.length} in range{skippedTrades ? ` · ${skippedTrades} skipped` : ""} · {symbolTrades.length} matching {symbol || "symbol"}</p>
+          <label className="chart-trade-asset-filter">Filter by asset
+            <select aria-label="Filter trades by asset" value={tradeAssetFilter} onChange={(event) => selectTradeAsset(event.target.value)}>
+              <option value="all">All assets</option>
+              {journalAssets.map((asset) => <option value={asset} key={asset}>{asset}</option>)}
+            </select>
+          </label>
+          <p className="chart-trades-count">{chartTradeList.length} trades{view === "my-trades" ? " in range" : ""}{skippedTrades ? ` · ${skippedTrades} skipped` : ""} · {tradeAssetFilter === "all" ? "All assets" : tradeAssetFilter}</p>
           {skippedTrades > 0 && <p className="chart-muted-note">Skipped data: {skipReasons.date} missing date · {skipReasons.entry} missing entry · {skipReasons.exit} missing exit.</p>}
           {chartTradeList.length ? <div className="chart-trade-rows">{chartTradeList.map((trade) => <div key={trade.id} className="chart-trade-row">
             <span>{storedDate(trade.date) || "Date unavailable"} · {trade.direction || "Direction unavailable"}</span>
@@ -796,10 +698,10 @@ export default function ChartWorkspace({
               if (view === "my-trades" && storedDate(trade.date)) setFocusTradeDate(storedDate(trade.date));
               onViewTrade(trade);
             }}>View</button>
-          </div>)}</div> : <p className="chart-muted-note">No journaled trades for {symbol || "this symbol"} in this view.</p>}
+          </div>)}</div> : <p className="chart-muted-note">No journaled trades for {tradeAssetFilter === "all" ? "all assets" : tradeAssetFilter} in this view.</p>}
         </div>}
       </section>
-      <SetupExport symbol={assetInput || symbol} timeframe={timeframe} trades={symbolTrades} strategyVersion={selectedVersion} />
+      {view === "my-trades" && <SetupExport symbol={symbol} timeframe={timeframe} trades={symbolTrades} strategyVersion={selectedVersion} />}
     </div>
   );
 }

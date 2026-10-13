@@ -118,7 +118,7 @@ describe("ChartWorkspace", () => {
     expect(onViewTrade).toHaveBeenCalledWith(expect.objectContaining({ id: "trade-1" }));
     fireEvent.click(screen.getByRole("checkbox", { name: "Journal markers" }));
     await waitFor(() => expect(markerCalls.at(-1)).toEqual([]));
-    expect(screen.getByRole("button", { name: /Trades on this chart/ })).toHaveAttribute("aria-expanded", "false");
+    expect(screen.getByRole("button", { name: /Trades on this chart ·/ })).toHaveAttribute("aria-expanded", "false");
   });
 
   it("keeps the dropdown available when markers are hidden and centers on a selected trade", async () => {
@@ -126,19 +126,23 @@ describe("ChartWorkspace", () => {
     fireEvent.click(screen.getByRole("button", { name: "My trades" }));
     await waitFor(() => expect(screen.getByLabelText("Historical candlestick chart")).toBeInTheDocument());
     fireEvent.click(screen.getByRole("checkbox", { name: "Journal markers" }));
-    fireEvent.click(screen.getByRole("button", { name: /Trades on this chart/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Trades on this chart ·/ }));
     expect(screen.getByText("Momentum · v2")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "View" }));
     await waitFor(() => expect(charts.at(-1).timeScale().setVisibleLogicalRange).toHaveBeenCalled());
   });
 
-  it("explains an unsupported stored timeframe instead of requesting it", () => {
-    localStorage.setItem("tradeCatalystChartSelection", JSON.stringify({ symbol: "AAPL", timeframe: "2h" }));
+  it("removes app-side ticker, timeframe, and mapping controls", () => {
     render(<ChartWorkspace selectedAsset="AAPL" />);
-    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
-    expect(screen.getByRole("alert")).toHaveTextContent('Unsupported timeframe "2h".');
-    expect(screen.getByRole("alert")).toHaveTextContent("1m, 5m, 15m, 1h, 4h, 1d, 1w");
-    expect(fetchHistoricalBars).not.toHaveBeenCalled();
+    expect(screen.queryByRole("textbox", { name: "Symbol" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Go" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Timeframe" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Map to chart symbol/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Chart symbol:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Chart blank or/)).not.toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Strategy" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Strategy version" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Chart view" })).toBeInTheDocument();
   });
 
   it("starts with TradingView and persists the view switch", async () => {
@@ -150,21 +154,6 @@ describe("ChartWorkspace", () => {
     unmount();
     render(<ChartWorkspace selectedAsset="AAPL" />);
     expect(screen.getByRole("button", { name: "My trades" })).toHaveAttribute("aria-pressed", "true");
-  });
-
-  it("uses the verified gold feed and persists a successful fallback feed", () => {
-    const { unmount } = render(<ChartWorkspace selectedAsset="CFDs on Gold (US$ / OZ)" />);
-    expect(screen.getByText("Chart symbol: OANDA:XAUUSD")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Try TVC:GOLD" }));
-    expect(screen.getByText("Chart symbol: TVC:GOLD")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "This works" }));
-    expect(JSON.parse(localStorage.getItem("tradeCatalystTradingViewSymbolMap"))).toEqual({
-      "CFDs on Gold (US$ / OZ)": "TVC:GOLD",
-    });
-    unmount();
-
-    render(<ChartWorkspace selectedAsset="CFDs on Gold (US$ / OZ)" />);
-    expect(screen.getByText("Chart symbol: TVC:GOLD")).toBeInTheDocument();
   });
 
   it("shows truthful study statuses in a compact row without a trade plan or checklist", () => {
@@ -214,21 +203,55 @@ describe("ChartWorkspace", () => {
     expect(JSON.parse(script.textContent).studies).toEqual([]);
   });
 
-  it("shows symbol-filtered trade count and net P&L in a closed dropdown and closes on Escape", async () => {
+  it("filters trades by asset and closes its dropdown on Escape or outside click", async () => {
     const aaplTrade = sampleTrade({ pnl: 2345.5 });
     const otherTrade = sampleTrade({ id: "trade-2", asset: "MSFT", pnl: 100 });
     render(<ChartWorkspace selectedAsset="AAPL" trades={[aaplTrade, otherTrade]} />);
-    const trigger = screen.getByRole("button", { name: /Trades on this chart/ });
+    const trigger = screen.getByRole("button", { name: /Trades on this chart ·/ });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
-    expect(trigger).toHaveTextContent("1 trades · net +$2,345.50");
+    expect(trigger).toHaveTextContent("2 trades · net +$2,445.50");
     fireEvent.click(trigger);
-    expect(screen.getByText("1 in range · 1 matching AAPL")).toBeInTheDocument();
-    expect(screen.getByText("1 in range · 1 matching AAPL")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Filter trades by asset" })).toHaveValue("all");
+    expect(screen.getByText("2 trades · All assets")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter trades by asset" }), { target: { value: "MSFT" } });
+    expect(screen.getByText("1 trades · MSFT")).toBeInTheDocument();
+    expect(trigger).toHaveTextContent("1 trades · net +$100.00");
+    expect(screen.getByText("Momentum · v2")).toBeInTheDocument();
     fireEvent.keyDown(document, { key: "Escape" });
     expect(trigger).toHaveAttribute("aria-expanded", "false");
     fireEvent.click(trigger);
     fireEvent.pointerDown(document.body);
     expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("selecting a trade asset in My trades changes its chart symbol", async () => {
+    const aaplTrade = sampleTrade();
+    const msftTrade = sampleTrade({ id: "trade-msft", asset: "MSFT" });
+    render(<ChartWorkspace selectedAsset="AAPL" trades={[aaplTrade, msftTrade]} />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
+    await waitFor(() => expect(fetchHistoricalBars).toHaveBeenCalledWith(
+      "AAPL",
+      "15m",
+      expect.any(String),
+      expect.any(String),
+    ));
+    fireEvent.click(screen.getByRole("button", { name: /Trades on this chart ·/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter trades by asset" }), { target: { value: "MSFT" } });
+    await waitFor(() => expect(fetchHistoricalBars).toHaveBeenCalledWith(
+      "MSFT",
+      "15m",
+      expect.any(String),
+      expect.any(String),
+    ));
+    expect(screen.getByRole("heading", { name: "MSFT · 15m" })).toBeInTheDocument();
+  });
+
+  it("does not remount the TradingView widget for dropdown-only state changes", () => {
+    render(<ChartWorkspace selectedAsset="AAPL" trades={[sampleTrade(), sampleTrade({ id: "trade-msft", asset: "MSFT" })]} />);
+    const script = document.querySelector('script[src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"]');
+    fireEvent.click(screen.getByRole("button", { name: /Trades on this chart ·/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter trades by asset" }), { target: { value: "MSFT" } });
+    expect(document.querySelector('script[src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"]')).toBe(script);
   });
 
 });

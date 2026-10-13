@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   readTradingViewSymbolMap,
   resolveChartSymbol,
+  resolveDefaultChartSelection,
   toTradingViewSymbol,
   tradingViewSymbolAlternatives,
   writeTradingViewSymbolMap,
@@ -56,5 +57,27 @@ describe("symbolMap", () => {
     expect(writeTradingViewSymbolMap({ Gold: "TVC:GOLD" })).toBe(true);
     expect(readTradingViewSymbolMap()).toEqual({ Gold: "TVC:GOLD" });
     expect(toTradingViewSymbol("Gold", readTradingViewSymbolMap())).toBe("TVC:GOLD");
+  });
+
+  it("chooses the shared asset, then the most-traded resolvable asset, then gold", () => {
+    const trades = [
+      { asset: "Random Story Stock" },
+      { asset: "EUR/USD" },
+      { asset: "EUR/USD" },
+      { asset: "AAPL" },
+      { asset: "AAPL" },
+      { asset: "AAPL" },
+    ];
+    expect(resolveDefaultChartSelection("BTCUSD", trades).tradingViewSymbol).toBe("BITSTAMP:BTCUSD");
+    expect(resolveDefaultChartSelection("", trades)).toMatchObject({
+      asset: "AAPL",
+      tradingViewSymbol: "AAPL",
+      chartSymbol: "AAPL",
+    });
+    expect(resolveDefaultChartSelection("", [{ asset: "Random Story Stock" }])).toMatchObject({
+      asset: "CFDs on Gold (US$ / OZ)",
+      tradingViewSymbol: "OANDA:XAUUSD",
+      chartSymbol: "XAUUSD",
+    });
   });
 });

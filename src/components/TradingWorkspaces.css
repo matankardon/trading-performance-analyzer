@@ -15,21 +15,11 @@
   padding: 16px;
 }
 
-.chart-toolbar {
-  display: flex;
-  align-items: end;
-  flex-wrap: wrap;
-  gap: 12px;
-  min-width: 0;
-}
-
-.chart-toolbar > * {
-  max-width: 100%;
-}
-
 .chart-view-switch {
   display: inline-flex;
   flex: 0 0 auto;
+  align-self: center;
+  margin-left: auto;
   gap: 4px;
   border: 1px solid var(--line, #314259);
   border-radius: 6px;
@@ -53,58 +43,6 @@
   color: var(--color-gold, #d4af37);
 }
 
-.chart-go {
-  min-height: 38px;
-}
-
-.chart-symbol-map {
-  display: flex;
-  flex: 1 1 270px;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 7px;
-  min-width: 0;
-  color: var(--ink-soft, #9eacbd);
-  font-size: 10px;
-}
-
-.chart-symbol-map input {
-  min-width: 120px;
-  min-height: 36px;
-  flex: 1 1 130px;
-  border: 1px solid var(--line, #314259);
-  border-radius: 6px;
-  padding: 7px 9px;
-  background: #0d1724;
-  color: var(--ink, #e8edf4);
-  font: inherit;
-}
-
-.chart-symbol-map button {
-  min-height: 34px;
-}
-
-.chart-symbol-control {
-  display: grid;
-  gap: 6px;
-  min-width: min(210px, 100%);
-  flex: 1 1 190px;
-  color: var(--ink-soft, #9eacbd);
-  font-size: 11px;
-}
-
-.chart-symbol-control input {
-  min-width: 0;
-  min-height: 38px;
-  border: 1px solid var(--line, #314259);
-  border-radius: 6px;
-  padding: 8px 10px;
-  background: #0d1724;
-  color: var(--ink, #e8edf4);
-  font: inherit;
-}
-
-.chart-timeframes,
 .chart-range-picker {
   display: flex;
   flex: 1 1 300px;
@@ -116,7 +54,6 @@
   padding: 0;
 }
 
-.chart-timeframes legend,
 .chart-range-picker legend {
   width: 100%;
   padding: 0 0 5px;
@@ -124,7 +61,6 @@
   font-size: 10px;
 }
 
-.chart-timeframes button,
 .chart-range-picker button {
   min-height: 34px;
   border: 1px solid var(--line, #314259);
@@ -137,35 +73,10 @@
   cursor: pointer;
 }
 
-.chart-timeframes button.selected,
 .chart-range-picker button.selected {
   border-color: var(--color-gold, #d4af37);
   color: var(--color-gold, #d4af37);
   background: rgba(212, 175, 55, 0.1);
-}
-
-.chart-resolved-symbol {
-  margin: 3px 0 0;
-  color: var(--ink-soft, #9eacbd);
-  font-size: 10px;
-}
-
-.chart-symbol-fallback {
-  display: grid;
-  gap: 8px;
-  margin-top: 12px;
-  color: var(--ink-soft, #9eacbd);
-  font-size: 10px;
-}
-
-.chart-symbol-fallback > div {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.chart-symbol-fallback small {
-  color: var(--color-gold, #d4af37);
 }
 
 .chart-refresh {
@@ -189,9 +100,10 @@
 
 .chart-strategy-toolbar {
   display: flex;
-  align-items: end;
+  align-items: center;
   flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .chart-strategy-toolbar > label {
@@ -215,8 +127,33 @@
 }
 
 .chart-strategy-toolbar .chart-indicator-status {
-  flex: 1 1 260px;
+  flex: 1 1 auto;
   margin-top: 0;
+}
+
+.chart-strategy-status {
+  display: grid;
+  flex: 1 1 320px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.chart-trade-asset-filter {
+  display: grid;
+  width: min(260px, 100%);
+  gap: 5px;
+  color: var(--ink-soft, #9eacbd);
+  font-size: 10px;
+}
+
+.chart-trade-asset-filter select {
+  min-height: 34px;
+  border: 1px solid var(--line, #314259);
+  border-radius: 5px;
+  padding: 5px 8px;
+  background: #0d1724;
+  color: var(--ink, #e8edf4);
+  font: inherit;
 }
 
 .tradingview-chart-shell {
@@ -377,6 +314,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 12px;
   margin-bottom: 12px;
 }
@@ -385,6 +323,20 @@
   margin: 2px 0;
   color: var(--ink, #e8edf4);
   font-size: 15px;
+}
+
+.chart-my-trades-controls {
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chart-my-trades-controls .chart-range-picker {
+  flex: 0 1 auto;
 }
 
 .chart-overlay-toggle {
@@ -465,11 +417,6 @@
   gap: 6px 16px;
   padding: 6px 0 9px;
   color: var(--ink-soft, #9eacbd);
-  font-size: 10px;
-}
-
-.chart-trades-list .chart-card-heading > span {
-  color: var(--ink-faint, #748397);
   font-size: 10px;
 }
 
@@ -838,7 +785,6 @@
     padding: 12px;
   }
 
-  .chart-timeframes,
   .chart-range-picker {
     flex: 1 1 100%;
   }

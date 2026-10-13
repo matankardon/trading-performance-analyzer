@@ -155,3 +155,38 @@ export function tradingViewSymbolAlternatives(assetOrTicker) {
   }
   return [];
 }
+
+export function resolveDefaultChartSelection(selectedAsset, trades = [], chartMap = {}, tradingViewMap = {}) {
+  const userMap = { ...chartMap, ...tradingViewMap };
+  const resolve = (asset) => {
+    const name = String(asset ?? "").trim();
+    if (!name) return null;
+    const tradingViewSymbol = toTradingViewSymbol(name, userMap);
+    if (!tradingViewSymbol) return null;
+    return {
+      asset: name,
+      tradingViewSymbol,
+      chartSymbol: resolveChartSymbol(name, chartMap) || name.toUpperCase(),
+    };
+  };
+
+  const selected = resolve(selectedAsset);
+  if (selected) return selected;
+
+  const tradeCounts = new Map();
+  trades.forEach((trade) => {
+    const asset = String(trade?.asset ?? "").trim();
+    if (asset) tradeCounts.set(asset, (tradeCounts.get(asset) || 0) + 1);
+  });
+  const mostTraded = [...tradeCounts.entries()]
+    .sort((left, right) => right[1] - left[1])
+    .map(([asset]) => resolve(asset))
+    .find(Boolean);
+  if (mostTraded) return mostTraded;
+
+  return {
+    asset: "CFDs on Gold (US$ / OZ)",
+    tradingViewSymbol: "OANDA:XAUUSD",
+    chartSymbol: "XAUUSD",
+  };
+}
