@@ -237,12 +237,14 @@
   min-width: 0;
   height: 100%;
   min-height: 0;
+  background: #0d0d0d;
 }
 
 .tradingview-widget-container__widget iframe {
   display: block;
   width: 100%;
   height: 100%;
+  background: #0d0d0d;
 }
 
 .tradingview-chart-loading {
@@ -549,6 +551,31 @@
 .chart-indicator-chip.unavailable {
   border-color: var(--line-soft, rgba(130, 155, 180, 0.12));
   color: var(--ink-faint, #748397);
+}
+
+.chart-indicator-guidance {
+  flex-basis: 100%;
+}
+
+.chart-drawings-note {
+  margin: 8px 0 0;
+  color: var(--ink-faint, #748397);
+  font-size: 10px;
+}
+
+.chart-manual-indicators {
+  display: flex;
+  flex-basis: 100%;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: var(--ink-faint, #748397);
+  font-size: 10px;
+}
+
+.chart-manual-indicators button {
+  min-height: 28px;
+  padding: 4px 8px;
 }
 
 .setup-export-panel {

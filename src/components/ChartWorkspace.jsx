@@ -22,7 +22,7 @@ import {
   writeSymbolMap,
   writeTradingViewSymbolMap,
 } from "../services/symbolMap";
-import { studiesForVersion } from "../services/tradingViewStudies";
+import { indicatorChipText, studiesForVersion } from "../services/tradingViewStudies";
 import TradingViewChart from "./TradingViewChart";
 import {
   calculateADX,
@@ -473,6 +473,7 @@ export default function ChartWorkspace({
   selectedAsset = "",
   onAssetChange = () => {},
   onViewTrade = () => {},
+  onPageChange = () => {},
 }) {
   const [symbolMap, setSymbolMap] = useState(() => readSymbolMap());
   const [tradingViewSymbolMap, setTradingViewSymbolMap] = useState(() => readTradingViewSymbolMap());
@@ -528,10 +529,11 @@ export default function ChartWorkspace({
     () => selectedVersion ? indicatorSpecs(selectedVersion) : [],
     [selectedVersion],
   );
-  const tradingViewStudies = useMemo(
+  const tradingViewStudyMapping = useMemo(
     () => studiesForVersion(selectedVersion),
     [selectedVersion],
   );
+  const tradingViewStudies = tradingViewStudyMapping.studies;
   const tradingViewSymbol = fallbackChartSymbol || toTradingViewSymbol(assetInput || symbol, userTradingViewMap);
   const tradingViewAlternatives = tradingViewSymbolAlternatives(assetInput || symbol);
   const bounds = useMemo(() => dateRange(range), [range]);
@@ -736,8 +738,13 @@ export default function ChartWorkspace({
         <label>Version<select aria-label="Strategy version" value={selectedVersion?.id || ""} onChange={(event) => setStrategyVersionChoice(event.target.value || null)}><option value="">Select a version</option>{strategyVersions.map((version) => <option key={version.id} value={version.id}>v{version.version}</option>)}</select></label>
         <div className="chart-indicator-status">
           <span>Studies · manual review</span>
-          {tradingViewStudies.map((study) => <span className={`chart-indicator-chip ${study.applied ? "" : "unavailable"}`} key={study.key}>{study.label}: {study.applied ? `applied · ${study.id}` : "check manually"}</span>)}
-          {!tradingViewStudies.length && <span className="chart-muted-note">Select a version to display its study mapping.</span>}
+          {tradingViewStudyMapping.indicators.map((indicator) => <span className={`chart-indicator-chip ${indicator.status === "sent" ? "" : "unavailable"}`} key={indicator.key}>{indicatorChipText(indicator)}</span>)}
+          {tradingViewStudyMapping.manualConditions.map((condition) => <span className="chart-indicator-chip unavailable" key={condition.key}>{condition.label}: Check manually</span>)}
+          {tradingViewStudyMapping.manualOnly && <div className="chart-manual-indicators">
+            <span>This strategy declares no chart indicators (only manual conditions). Add indicators in Strategy Lab to see them here.</span>
+            <button type="button" className="secondary-btn" onClick={() => onPageChange("Strategy Lab")}>Open Strategy Lab</button>
+          </div>}
+          <span className="chart-muted-note chart-indicator-guidance">If an indicator isn’t visible, add it with the chart’s Indicators button.</span>
         </div>
       </section>
 
@@ -766,7 +773,10 @@ export default function ChartWorkspace({
             const status = output ? rendered : bars.length ? `not computable${indicatorError ? ` · ${indicatorError}` : ""}` : "waiting for bars";
             return <span className={`chart-indicator-chip ${output ? "" : "unavailable"}`} key={item.key}>{item.label}: {status}</span>;
           })}</div>}
-          {view === "tradingview" && <p className="chart-muted-note">Chart data is provided by TradingView. Indicators and setup conditions are not detected by this application.</p>}
+          {view === "tradingview" && <>
+            <p className="chart-muted-note">Chart data is provided by TradingView. Indicators and setup conditions are not detected by this application.</p>
+            <p className="chart-drawings-note">Drawings made on this chart are not saved and are cleared when you change symbol or timeframe. To keep them: take a screenshot (or use the chart&apos;s snapshot button) and attach it to a trade.</p>
+          </>}
         </section>
       </div>
 

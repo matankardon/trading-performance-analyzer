@@ -67,12 +67,12 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
       serializedConfig = JSON.stringify(config);
       if (typeof serializedConfig !== "string") throw new TypeError("Widget configuration did not serialize to JSON.");
       console.debug("TradingView widget config JSON:", serializedConfig);
+      console.debug("TradingView studies:", config.studies);
     } catch {
       console.error("Could not serialize TradingView widget config keys:", [
         "symbol",
         "interval",
         "theme",
-        "colorTheme",
         "locale",
         "timezone",
         "style",
@@ -82,8 +82,9 @@ export default function TradingViewChart({ symbol, interval, studies = EMPTY_STU
         "autosize",
         "width",
         "height",
+        "hide_side_toolbar",
+        "hide_top_toolbar",
         "studies",
-        "studies_overrides",
       ]);
       queueMicrotask(() => {
         if (active) setStatus("error");

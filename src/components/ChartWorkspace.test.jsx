@@ -167,7 +167,7 @@ describe("ChartWorkspace", () => {
     expect(screen.getByText("Chart symbol: TVC:GOLD")).toBeInTheDocument();
   });
 
-  it("shows strategy studies in a compact row without a trade plan or checklist", () => {
+  it("shows truthful study statuses in a compact row without a trade plan or checklist", () => {
     const strategy = {
       id: "momentum",
       name: "Momentum",
@@ -180,11 +180,38 @@ describe("ChartWorkspace", () => {
     render(<ChartWorkspace selectedAsset="AAPL" strategyLibrary={[strategy]} />);
     expect(screen.getByRole("combobox", { name: "Strategy" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Strategy version" })).toHaveValue("momentum-v2");
-    expect(screen.getByText("SMA: applied · MASimple@tv-basicstudies")).toBeInTheDocument();
-    expect(screen.getByText("Liquidity Sweep: check manually")).toBeInTheDocument();
+    expect(screen.getByText("SMA: Sent to chart")).toBeInTheDocument();
+    expect(screen.getByText("Liquidity Sweep: Check manually")).toBeInTheDocument();
+    expect(screen.getByText("If an indicator isn’t visible, add it with the chart’s Indicators button.")).toBeInTheDocument();
+    expect(screen.getByText(/Drawings made on this chart are not saved/)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Log this trade" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Trade plan entry")).not.toBeInTheDocument();
     expect(screen.queryByRole("checkbox", { name: /Liquidity Sweep/ })).not.toBeInTheDocument();
+  });
+
+  it("explains manual-only strategies and opens Strategy Lab", () => {
+    const onPageChange = vi.fn();
+    const strategy = {
+      id: "manual",
+      name: "Manual",
+      versions: [{ id: "manual-v1", version: 1, conditions: { liquiditySweep: true, mss: true } }],
+    };
+    render(<ChartWorkspace selectedAsset="AAPL" strategyLibrary={[strategy]} onPageChange={onPageChange} />);
+    expect(screen.getByText("This strategy declares no chart indicators (only manual conditions). Add indicators in Strategy Lab to see them here.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Open Strategy Lab" }));
+    expect(onPageChange).toHaveBeenCalledWith("Strategy Lab");
+  });
+
+  it("shows an unverified id without sending it to the widget", () => {
+    const strategy = {
+      id: "ichimoku",
+      name: "Ichimoku",
+      versions: [{ id: "ichimoku-v1", version: 1, conditions: { ichimokuConfirmation: true } }],
+    };
+    render(<ChartWorkspace selectedAsset="AAPL" strategyLibrary={[strategy]} />);
+    expect(screen.getByText("Ichimoku: Unverified id (STD;Ichimoku%Cloud)")).toBeInTheDocument();
+    const script = document.querySelector('script[src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"]');
+    expect(JSON.parse(script.textContent).studies).toEqual([]);
   });
 
   it("shows symbol-filtered trade count and net P&L in a closed dropdown and closes on Escape", async () => {

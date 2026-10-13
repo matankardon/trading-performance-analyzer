@@ -3,21 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import TradingViewChart from "./TradingViewChart";
 import { assertWidgetConfigShape, buildWidgetConfig } from "../services/tradingViewWidgetConfig";
 
-const GOLD_BOLLINGER_STUDIES = [{
-  id: "BB@tv-basicstudies",
-  inputs: { length: 20, stdDev: 2 },
-  applied: true,
-}];
+const GOLD_BOLLINGER_STUDIES = ["STD;Bollinger_Bands"];
 
 function expectSafeWidgetConfig(config) {
   expect(assertWidgetConfigShape(config)).toBe(true);
-  for (const [key, value] of Object.entries(config)) {
-    if (key === "studies_overrides") {
-      for (const [overrideKey, overrideValue] of Object.entries(value)) {
-        expect(typeof overrideKey).toBe("string");
-        expect(String(overrideValue)).not.toBe("[object Object]");
-      }
-    } else if (Array.isArray(value)) {
+  for (const value of Object.values(config)) {
+    if (Array.isArray(value)) {
       value.forEach((item) => expect(String(item)).not.toBe("[object Object]"));
     } else {
       expect(String(value)).not.toBe("[object Object]");
@@ -32,22 +23,25 @@ describe("TradingViewChart", () => {
   });
 
   it("builds plain JSON-safe config and injects the exact serialized config string", async () => {
-    const studies = [{ id: "RSI@tv-basicstudies", inputs: { length: 9 }, applied: true }];
+    const studies = ["STD;RSI"];
     const config = buildWidgetConfig({ symbol: "OANDA:XAUUSD", interval: "60", studies });
     expect(() => JSON.parse(JSON.stringify(config))).not.toThrow();
     expect(config).toMatchObject({
       symbol: "OANDA:XAUUSD",
       interval: "60",
-      studies: ["RSI@tv-basicstudies"],
+      studies: ["STD;RSI"],
       theme: "dark",
-      colorTheme: "dark",
       backgroundColor: "#0D0D0D",
       gridColor: "rgba(212, 175, 55, 0.08)",
       autosize: true,
       width: "100%",
       height: "100%",
+      hide_side_toolbar: false,
+      hide_top_toolbar: false,
       locale: "en",
     });
+    expect(config).not.toHaveProperty("colorTheme");
+    expect(config).not.toHaveProperty("studies_overrides");
     render(<TradingViewChart symbol="OANDA:XAUUSD" interval="60" studies={studies} />);
     const script = await waitFor(() => document.querySelector('script[src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"]'));
     expect(script.textContent).not.toBe("[object Object]");
@@ -56,48 +50,39 @@ describe("TradingViewChart", () => {
 
   it.each([
     ["no studies", []],
-    ["Bollinger with overrides", GOLD_BOLLINGER_STUDIES],
-    ["Bollinger without overrides", [{ id: "BB@tv-basicstudies", applied: true }]],
-    ["several studies with overrides", [
-      ...GOLD_BOLLINGER_STUDIES,
-      { id: "RSI@tv-basicstudies", inputs: { length: 14 }, applied: true },
-    ]],
-    ["several studies without overrides", [
-      { id: "BB@tv-basicstudies", applied: true },
-      { id: "RSI@tv-basicstudies", applied: true },
-    ]],
+    ["Bollinger", GOLD_BOLLINGER_STUDIES],
+    ["several studies", ["STD;Bollinger_Bands", "STD;RSI"]],
   ])("produces a flat JSON-safe config for %s", (_name, studies) => {
     const config = buildWidgetConfig({ symbol: "OANDA:XAUUSD", interval: "60", studies });
     expectSafeWidgetConfig(config);
     expect(config.studies.every((studyId) => typeof studyId === "string")).toBe(true);
   });
 
-  it("rejects object values inside studies and nested study overrides", () => {
+  it("rejects object values inside studies and ensures the config has no nested overrides", () => {
     expect(() => assertWidgetConfigShape({ studies: [{ id: "BB@tv-basicstudies" }] }))
       .toThrow(/must contain only primitives/);
-    expect(() => assertWidgetConfigShape({
-      studies: ["BB@tv-basicstudies"],
-      studies_overrides: { "bollinger bands.length": { value: 20 } },
-    })).toThrow(/primitive values/);
+    expect(buildWidgetConfig({ symbol: "OANDA:XAUUSD", interval: "60", studies: ["STD;Bollinger_Bands"] }))
+      .not.toHaveProperty("studies_overrides");
   });
 
   it("produces the expected exact JSON for gold with Bollinger Bands", () => {
     const config = buildWidgetConfig({
       symbol: "OANDA:XAUUSD",
       interval: "60",
-      studies: GOLD_BOLLINGER_STUDIES,
+      studies: ["STD;Bollinger_Bands"],
     });
     expect(JSON.stringify(config)).toBe(
-      '{"symbol":"OANDA:XAUUSD","interval":"60","theme":"dark","colorTheme":"dark","locale":"en","timezone":"Etc/UTC","style":"1","backgroundColor":"#0D0D0D","gridColor":"rgba(212, 175, 55, 0.08)","allow_symbol_change":true,"autosize":true,"width":"100%","height":"100%","studies":["BB@tv-basicstudies"],"studies_overrides":{"bollinger bands.length":20,"bollinger bands.stdDev":2}}',
+      '{"symbol":"OANDA:XAUUSD","interval":"60","theme":"dark","locale":"en","timezone":"Etc/UTC","style":"1","backgroundColor":"#0D0D0D","gridColor":"rgba(212, 175, 55, 0.08)","allow_symbol_change":true,"autosize":true,"width":"100%","height":"100%","hide_side_toolbar":false,"hide_top_toolbar":false,"studies":["STD;Bollinger_Bands"]}',
     );
   });
 
   it("logs the exact serialized widget config once per mount", async () => {
     const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
-    render(<TradingViewChart symbol="OANDA:XAUUSD" interval="60" studies={GOLD_BOLLINGER_STUDIES} />);
+    render(<TradingViewChart symbol="OANDA:XAUUSD" interval="60" studies={["STD;Bollinger_Bands"]} />);
     const script = await waitFor(() => document.querySelector('script[src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"]'));
-    expect(debug).toHaveBeenCalledTimes(1);
+    expect(debug).toHaveBeenCalledTimes(2);
     expect(debug).toHaveBeenCalledWith("TradingView widget config JSON:", script.textContent);
+    expect(debug).toHaveBeenCalledWith("TradingView studies:", ["STD;Bollinger_Bands"]);
   });
 
   it("injects the official widget script and cleans it up on unmount", async () => {
@@ -111,7 +96,8 @@ describe("TradingViewChart", () => {
       symbol: "OANDA:XAUUSD",
       interval: "60",
       theme: "dark",
-      colorTheme: "dark",
+      hide_side_toolbar: false,
+      hide_top_toolbar: false,
       timezone: "Etc/UTC",
       studies: [],
     });
@@ -155,7 +141,6 @@ describe("TradingViewChart", () => {
       "symbol",
       "interval",
       "theme",
-      "colorTheme",
       "locale",
       "timezone",
       "style",
@@ -165,17 +150,17 @@ describe("TradingViewChart", () => {
       "autosize",
       "width",
       "height",
+      "hide_side_toolbar",
+      "hide_top_toolbar",
       "studies",
-      "studies_overrides",
     ]);
   });
 
   it("remounts when symbol and studies change and waits for the iframe load", async () => {
-    const firstStudy = [{ id: "RSI@tv-basicstudies", inputs: { length: 9 }, applied: true }];
+    const firstStudy = ["STD;RSI"];
     const { rerender } = render(<TradingViewChart symbol="AAPL" interval="D" studies={firstStudy} />);
     const firstScript = await waitFor(() => document.querySelector('script[src="https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js"]'));
-    expect(JSON.parse(firstScript.textContent)).toMatchObject({ symbol: "AAPL", studies: ["RSI@tv-basicstudies"] });
-    expect(JSON.parse(firstScript.textContent).studies_overrides).toEqual({ "relative strength index.length": 9 });
+    expect(JSON.parse(firstScript.textContent)).toMatchObject({ symbol: "AAPL", studies: ["STD;RSI"] });
 
     rerender(<TradingViewChart symbol="OANDA:XAUUSD" interval="60" studies={[]} />);
     const nextScript = await waitFor(() => {
