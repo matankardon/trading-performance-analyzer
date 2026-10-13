@@ -913,10 +913,7 @@ function App() {
         loadingTrades={loadingTrades}
         onAddTrade={openTradeEntryChoice}
         onLogTrade={openStrategyTrade}
-        onAskCoach={(prompt) => {
-          setCoachInitialPrompt(prompt);
-          setActivePage("Coaching");
-        }}
+        onAskCoach={openCoachWithPrompt}
         onViewTrade={setSelectedTrade}
         selectedAsset={selectedAsset || defaultAsset}
         onAssetChange={setSelectedAsset}
@@ -924,6 +921,12 @@ function App() {
       />
     );
 
+  }
+
+  function openCoachWithPrompt(prompt) {
+    setCoachInitialPrompt(prompt);
+    setActiveMode("DAY TRADING");
+    setActivePage("Coaching");
   }
 
   /*
@@ -1989,7 +1992,7 @@ function App() {
         <main className="main-content">
           {isDayTrading && ["Overview", "Markets", "Strategy", "Chart"].includes(activePage) && renderDashboard(activePage)}
 
-          {!isDayTrading && <InvestingWorkspace page={activePage} />}
+          {!isDayTrading && <InvestingWorkspace page={activePage} onAskCoach={openCoachWithPrompt} />}
 
           {isDayTrading && activePage === "Trades" && renderJournal()}
 
@@ -2016,11 +2019,11 @@ function App() {
           )}
 
           {isDayTrading && activePage === "Events & News" && (
-            <EconomicCalendar />
+            <EconomicCalendar onAskCoach={openCoachWithPrompt} />
           )}
 
           {isDayTrading && activePage === "Technicals" && (
-            <Technicals trades={trades} selectedAsset={selectedAsset} />
+            <Technicals trades={trades} selectedAsset={selectedAsset} onAskCoach={openCoachWithPrompt} />
           )}
 
           {isDayTrading && activePage === "Strategy Lab" && (

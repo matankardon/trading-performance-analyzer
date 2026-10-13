@@ -14,12 +14,14 @@ describe("Technicals", () => {
     expect(JSON.parse(script.textContent)).toMatchObject({
       symbol: "OANDA:XAUUSD",
       colorTheme: "dark",
-      isTransparent: true,
+      isTransparent: false,
       locale: "en",
     });
     expect(screen.getByText("Technical rating from TradingView — not a prediction or advice.")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Technical analysis symbol" })).toHaveValue("OANDA:XAUUSD");
     expect(screen.queryByText(/What are the experts thinking/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "What does this mean?" })).toBeInTheDocument();
+    expect(screen.getByText("How to read the rating and counts")).toBeInTheDocument();
   });
 
   it("offers journal assets before ticker tape symbols and changes the widget on selection", async () => {

@@ -20,7 +20,7 @@ describe("TickerBar", () => {
       "FOREXCOM:NSXUSD",
       "TVC:DXY",
     ]);
-    expect(config).toMatchObject({ colorTheme: "dark", isTransparent: true, locale: "en" });
+    expect(config).toMatchObject({ colorTheme: "dark", isTransparent: false, locale: "en" });
     expect(screen.getByRole("link", { name: "Track all markets on TradingView" })).toBeVisible();
     expect(screen.queryByText("DEMO DATA")).not.toBeInTheDocument();
     expect(screen.getByLabelText("TradingView market ticker").querySelector(".tradingview-widget-shell"))

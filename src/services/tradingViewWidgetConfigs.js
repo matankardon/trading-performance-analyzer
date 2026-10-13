@@ -50,7 +50,7 @@ export function assertTradingViewWidgetConfig(scriptName, config) {
 export function buildTickerTapeConfig() {
   const config = {
     symbols: TRADING_VIEW_TICKER_SYMBOLS,
-    isTransparent: true,
+    isTransparent: false,
     colorTheme: "dark",
     locale: "en",
   };
@@ -61,7 +61,7 @@ export function buildTickerTapeConfig() {
 export function buildEconomicCalendarConfig() {
   const config = {
     colorTheme: "dark",
-    isTransparent: true,
+    isTransparent: false,
     locale: "en",
   };
   assertTradingViewWidgetConfig("events", config);
@@ -73,7 +73,7 @@ export function buildTimelineConfig() {
     feedMode: "market",
     market: "stock",
     colorTheme: "dark",
-    isTransparent: true,
+    isTransparent: false,
     width: "100%",
     height: "100%",
     locale: "en",
@@ -86,7 +86,7 @@ export function buildTechnicalAnalysisConfig(symbol) {
   const config = {
     interval: "1D",
     width: "100%",
-    isTransparent: true,
+    isTransparent: false,
     height: "100%",
     symbol: String(symbol ?? ""),
     showIntervalTabs: true,

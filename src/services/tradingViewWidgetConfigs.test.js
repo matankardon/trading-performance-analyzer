@@ -13,7 +13,7 @@ describe("TradingView widget configs", () => {
   it("allows ticker tape symbol objects only in its symbols array", () => {
     const config = buildTickerTapeConfig();
     expect(config.symbols).toEqual(TRADING_VIEW_TICKER_SYMBOLS);
-    expect(config).toMatchObject({ colorTheme: "dark", isTransparent: true, locale: "en" });
+    expect(config).toMatchObject({ colorTheme: "dark", isTransparent: false, locale: "en" });
     expect(assertTradingViewWidgetConfig("ticker-tape", config)).toBe(true);
     expect(() => assertTradingViewWidgetConfig("timeline", config)).toThrow(/must be primitive/);
     expect(() => assertTradingViewWidgetConfig("ticker-tape", { symbols: [{ proName: "X", title: "X", extra: "bad" }] }))
@@ -25,21 +25,21 @@ describe("TradingView widget configs", () => {
   it("builds the economic calendar, timeline, and technical analysis display configs", () => {
     expect(buildEconomicCalendarConfig()).toMatchObject({
       colorTheme: "dark",
-      isTransparent: true,
+      isTransparent: false,
       locale: "en",
     });
     expect(buildTimelineConfig()).toMatchObject({
       feedMode: "market",
       market: "stock",
       colorTheme: "dark",
-      isTransparent: true,
+      isTransparent: false,
       locale: "en",
     });
     expect(buildTechnicalAnalysisConfig("FX:EURUSD")).toMatchObject({
       symbol: "FX:EURUSD",
       interval: "1D",
       colorTheme: "dark",
-      isTransparent: true,
+      isTransparent: false,
       locale: "en",
     });
   });

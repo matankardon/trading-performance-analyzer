@@ -1,3 +1,5 @@
+import NewsFeed from "./NewsFeed";
+
 const investingPages = {
   Overview: {
     eyebrow: "INVESTING OVERVIEW",
@@ -127,7 +129,7 @@ function EmptyTable({ columns, title, description }) {
   );
 }
 
-function InvestingWorkspace({ page = "Overview" }) {
+function InvestingWorkspace({ page = "Overview", onAskCoach }) {
   const content = investingPages[page] || investingPages.Overview;
   const isOverview = page === "Overview";
 
@@ -162,7 +164,12 @@ function InvestingWorkspace({ page = "Overview" }) {
           </section>
 
           <InterpretationPanel />
+          <NewsFeed scope="investing" onAskCoach={onAskCoach} />
         </>
+      ) : page === "Research" ? (
+        <section className="investing-research-news">
+          <NewsFeed scope="investing" onAskCoach={onAskCoach} />
+        </section>
       ) : page === "Portfolio" ? (
         <section className="workspace-panel full-width-panel"><div className="panel-header"><div><p className="eyebrow">POSITION REGISTER</p><h2>Long-term portfolio</h2></div><span className="panel-tag">No holdings</span></div><EmptyTable columns={portfolioColumns} title="Your portfolio is empty" description="Add connected holdings later. No positions or performance are being inferred here." /></section>
       ) : page === "Watchlist" ? (

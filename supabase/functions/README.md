@@ -63,3 +63,80 @@ Required Supabase project secrets/configuration:
 
 The function deploy workflow triggers for changes under `supabase/functions/**`.
 Deploy `coach-chat` by pushing its function files to `main`.
+
+## News Edge Functions
+
+`news` returns cached financial news for an authenticated caller and lazily
+refreshes stale category data when a refresh lock is available. It accepts
+`POST` JSON `{ "category": "all", "tickers": ["SPY"], "limit": 25, "before": null }`.
+Request category is `all`, `forex`, `crypto`, `equities`, or `macro` (stored
+categories also include `markets` and `other). `all` deliberately omits a
+database category filter.
+The successful listing shape is
+`{ "ok": true, "items": [], "providers": [], "before": null, "refreshedAt": null }`.
+The `before` cursor is the oldest returned item's `publishedAt` when another
+page exists, otherwise `null`. Cached results remain usable if another request owns the refresh
+lock or the provider refresh fails; these success responses keep the same
+listing contract, set `stale: true`, and `refreshedAt` remains the last
+successful refresh time. A provider failure with cached items also adds a
+`warning` with code `NEWS_UNAVAILABLE`; with no cached items the endpoint
+returns `{ "ok": false, "code": "NEWS_UNAVAILABLE", "message": "..." }` with
+HTTP 503. News requests are limited to 240 per user per hour.
+
+`news-explain` accepts `POST` JSON `{ "newsId": "<news item UUID>" }` and
+returns
+`{ "ok": true, "explanation": { "whatHappened": "...", "whyItMatters": "...", "affects": [{ "market": "...", "effect": "...", "reasoning": "..." }], "watchNext": [], "caveat": "..." } }`.
+Explanations are shared by news item. Only the article headline and provider
+summary are sent to OpenAI. Requests are limited to 30 per user per hour, and
+generation has a global daily cap configured by `NEWS_EXPLAIN_DAILY_CAP`
+(default 500). Both functions use the standard error shape
+`{ "ok": false, "code": "...", "message": "..." }` with an HTTP error status.
+Neither function logs request bodies, user identifiers, or article content.
+
+Apply `supabase/migrations/20261013000000_news_and_general_rate_limits.sql`
+before deploying these functions. It creates the news cache, per-user
+explanations, and refresh-lock state, and generalizes the existing hourly
+rate-limit RPC while retaining `consume_coach_request(user)` as a compatible
+30-per-hour wrapper.
+
+### Massive provider integration
+
+The provider adapter makes a GET request to the documented endpoint
+`https://api.massive.com/v2/reference/news`, using `MASSIVE_API_KEY` as the
+`apiKey` query parameter. It supplies the supported `ticker`,
+`published_utc.gte`, `sort=published_utc`, `order=desc`, and `limit=50`
+parameters when applicable. The relevant response contract is:
+
+```json
+{
+  "results": [
+    {
+      "id": "provider-article-id",
+      "title": "Article title",
+      "description": "Article summary",
+      "article_url": "https://publisher.example/article",
+      "published_utc": "2026-10-13T08:00:00Z",
+      "publisher": { "name": "Publisher" },
+      "tickers": ["SPY"]
+    }
+  ]
+}
+```
+
+The adapter rejects malformed records and non-HTTPS article links, classifies
+only categories supported by headline/summary text, and deduplicates provider
+IDs and URLs. Unrecognized market types remain `other`; no forex/crypto
+classification is inferred from an unrecognized ticker alone. News is not live
+market-price data.
+
+Required configuration:
+
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY`: validate caller access tokens.
+- `SUPABASE_SERVICE_ROLE_KEY`: access protected news tables and atomically
+  consume user limits. Never expose this key to clients.
+- `MASSIVE_API_KEY`: server-side Massive API key.
+- `OPENAI_API_KEY`: server-side key for explanation generation.
+- `NEWS_EXPLAIN_MODEL`: optional OpenAI chat-completions model; defaults to
+  `gpt-4o-mini`.
+- `NEWS_EXPLAIN_DAILY_CAP`: optional global explanation-generation cap per
+  UTC day; defaults to `500`.

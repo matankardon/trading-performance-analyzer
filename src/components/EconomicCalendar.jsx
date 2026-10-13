@@ -1,39 +1,52 @@
 import { useMemo } from "react";
 import TradingViewWidget from "./TradingViewWidget";
+import NewsFeed from "./NewsFeed";
+import { EVENT_GUIDE } from "../constants/eventGuide";
 import {
   buildEconomicCalendarConfig,
-  buildTimelineConfig,
 } from "../services/tradingViewWidgetConfigs";
 
-function NewsPipelineExtension({ items = [] }) {
-  if (!items.length) return null;
-  return <section className="app-news-extension">{items.map((item) => <article key={item.id}>{item.title}</article>)}</section>;
+function EventGuide() {
+  return (
+    <section className="event-guide" aria-labelledby="event-guide-heading">
+      <div className="event-guide-heading"><p className="eyebrow">EVERGREEN GUIDE</p><h2 id="event-guide-heading">Event guide</h2></div>
+      <div className="event-guide-list">
+        {EVENT_GUIDE.map((event) => (
+          <details className="event-guide-item" key={event.id}>
+            <summary>{event.title}</summary>
+            <div className="event-guide-copy">
+              <p><strong>What it measures:</strong> {event.measures}</p>
+              <p><strong>Why traders watch it:</strong> {event.whyWatch}</p>
+              <p><strong>Common market interpretation:</strong> {event.reactions}</p>
+              <p><strong>Caution:</strong> {event.caution}</p>
+            </div>
+          </details>
+        ))}
+      </div>
+    </section>
+  );
 }
 
-function EconomicCalendar() {
+function EconomicCalendar({ onAskCoach }) {
   const calendarConfig = useMemo(() => buildEconomicCalendarConfig(), []);
-  const timelineConfig = useMemo(() => buildTimelineConfig(), []);
   return (
     <div className="market-intelligence-page">
       <header className="topbar market-intelligence-header">
         <div>
           <p className="eyebrow">MARKET INTELLIGENCE</p>
           <h1>Events &amp; News</h1>
-          <p>Economic events and market headlines from TradingView.</p>
+          <p>Economic events from TradingView and headlines from configured news providers.</p>
         </div>
       </header>
-      <div className="tradingview-market-widgets">
+      <div className="tradingview-market-widgets news-calendar-layout">
         <section className="trading-workspace-card tradingview-market-calendar">
           <h2>Economic Calendar</h2>
           <TradingViewWidget scriptName="events" config={calendarConfig} height={620} title="Economic calendar" />
+          <EventGuide />
         </section>
-        <section className="trading-workspace-card tradingview-market-timeline">
-          <h2>Market News</h2>
-          <TradingViewWidget scriptName="timeline" config={timelineConfig} height={620} title="Market news timeline" />
-        </section>
+        <NewsFeed scope="markets" onAskCoach={onAskCoach} />
       </div>
-      <p className="tradingview-source-note">Events and headlines provided by TradingView.</p>
-      <NewsPipelineExtension items={[]} />
+      <p className="tradingview-source-note">Events provided by TradingView; news headlines use the configured news feed.</p>
     </div>
   );
 }
