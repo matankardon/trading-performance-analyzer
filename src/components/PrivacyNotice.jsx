@@ -8,7 +8,7 @@ function PrivacyNotice() {
       <p>
         Screenshots uploaded through the Screenshot Trade Workflow are stored in a private bucket and linked to the associated journal trade. When you use screenshot extraction or ask Coach to analyze a saved screenshot, the selected image is sent to OpenAI for analysis. Screenshot paths and image data are not saved in Coach conversation history.
       </p>
-      <p>The chart is provided by TradingView&apos;s embedded widget, which loads TradingView&apos;s scripts; no journal data is sent to it.</p>
+      <p>TradingView provides the chart, ticker, economic calendar, news timeline, and technical-analysis widgets. These widgets load TradingView scripts and receive display settings and selected symbols; no journal trades, notes, or other journal records are sent to them.</p>
       <p>
         This privacy notice is a development draft and requires legal review before production use. A Settings-level opt-out for screenshot storage is not available yet.
       </p>

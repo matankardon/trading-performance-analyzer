@@ -379,7 +379,7 @@ export default function StrategyWorkspace({
       </section>
 
       <section className="trading-workspace-card strategy-current-market">
-        <div><p className="eyebrow">CURRENT MARKET · HISTORICAL DAILY BAR</p><strong>{symbol || "Symbol unavailable"}</strong><small>{barsLoading ? "Loading recent bar…" : barsError ? `Unavailable: ${barsError}` : latestBar ? `Source: Massive · bar close ${new Date(latestBar.timestamp).toLocaleString("en-US")}` : "No recent bar returned."}</small></div>
+        <div><p className="eyebrow">RECENT PRICE CONTEXT · HISTORICAL DAILY BAR</p><strong>{symbol || "Symbol unavailable"}</strong><small>{barsLoading ? "Loading recent bar…" : barsError ? `Unavailable: ${barsError}` : latestBar ? `Source: Massive · bar close ${new Date(latestBar.timestamp).toLocaleString("en-US")}` : "No recent bar returned."}</small></div>
         <div><strong>{latestBar ? latestBar.close.toLocaleString("en-US", { maximumFractionDigits: 4 }) : "--"}</strong><small>{barChange && Number.isFinite(barChange.percent) ? `Change: ${barChange.absolute >= 0 ? "+" : ""}${barChange.absolute.toFixed(4)} (${barChange.percent.toFixed(2)}%)` : "Change unavailable"}</small></div>
         {barsLoading && <div className="strategy-market-skeleton" role="status" aria-label="Loading historical market bar" />}
       </section>

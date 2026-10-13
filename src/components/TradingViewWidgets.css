@@ -1,0 +1,141 @@
+.tradingview-widget-shell {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 6px;
+  background: #0d0d0d;
+}
+
+.tradingview-widget-container,
+.tradingview-widget-container__widget {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  background: #0d0d0d;
+}
+
+.tradingview-widget-container__widget iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #0d0d0d;
+}
+
+.tradingview-widget-copyright {
+  position: absolute;
+  z-index: 2;
+  right: 5px;
+  bottom: 2px;
+  padding: 2px 4px;
+  border-radius: 2px;
+  background: rgba(13, 13, 13, 0.9);
+  color: #aebaca;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 9px;
+  line-height: 1.25;
+}
+
+.tradingview-widget-copyright a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.tradingview-widget-loading {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 8px;
+  padding: 18px;
+  background: linear-gradient(90deg, #0d0d0d 0%, #171717 50%, #0d0d0d 100%);
+  background-size: 200% 100%;
+  animation: tradingview-widget-shimmer 1.4s ease-in-out infinite;
+  color: #aebaca;
+  font-size: 11px;
+  text-align: center;
+}
+
+.tradingview-widget-loading p {
+  margin: 0;
+}
+
+.tradingview-market-widgets {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.9fr);
+  align-items: start;
+  gap: 14px;
+}
+
+.tradingview-market-widgets > section,
+.technicals-widget-panel {
+  min-width: 0;
+  padding: 14px;
+}
+
+.tradingview-market-widgets h2 {
+  margin: 0 0 10px;
+  font-size: 14px;
+}
+
+.tradingview-source-note {
+  margin: 8px 2px 0;
+  color: var(--ink-faint, #748397);
+  font-size: 10px;
+}
+
+.technicals-symbol-select {
+  display: grid;
+  flex: 0 1 300px;
+  gap: 5px;
+  color: var(--ink-soft, #9eacbd);
+  font-size: 10px;
+}
+
+.technicals-symbol-select select {
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  border: 1px solid var(--line, #314259);
+  border-radius: 6px;
+  padding: 6px 8px;
+  background: #0d1724;
+  color: var(--ink, #e8edf4);
+  font: inherit;
+}
+
+@keyframes tradingview-widget-shimmer {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+
+@media (max-width: 800px) {
+  .tradingview-market-widgets {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .technicals-page .market-intelligence-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .technicals-symbol-select {
+    flex-basis: auto;
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tradingview-widget-loading {
+    animation: none;
+  }
+}

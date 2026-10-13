@@ -102,7 +102,7 @@ function MarketHeader({ market, asset, onAssetChange }) {
             <h2>{hasAsset ? market.asset : asset || "Selected market"}</h2>
           </div>
           <p className="market-header-state">
-            {hasPrice ? "Current market data received" : "Live market data not connected"}
+            {hasPrice ? "Market data received" : "Market data unavailable"}
           </p>
         </div>
         <div className="market-price-block">
@@ -299,7 +299,7 @@ function QuickAccess({ onPageChange }) {
   const links = [
     ["Markets", "Market"],
     ["Events & News", "Events & News"],
-    ["Sentiment", "Sentiment"],
+    ["Technicals", "Technicals"],
     ["Strategy", "Strategy"],
     ["Chart", "Chart"],
   ];
@@ -345,7 +345,7 @@ function OverviewPage({ market, strategy, selectedAsset, onAssetChange, onPageCh
       </div>
 
       <section className="overview-status-strip">
-        <div><span>Market status</span><strong>{status}</strong><small>{market.statusReason || "Live data pending"}</small></div>
+        <div><span>Market status</span><strong>{status}</strong><small>{market.statusReason || "Market data pending"}</small></div>
         <div><span>Bias</span><strong>{direction}</strong><small>Separate from score</small></div>
         <div><span>Setup</span><strong>{strategy.state || "Unavailable"}</strong><small>{strategy.score ? `Score ${strategy.score}` : "Waiting"}</small></div>
       </section>

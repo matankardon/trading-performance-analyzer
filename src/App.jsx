@@ -14,7 +14,7 @@ import { fetchStrategyLibrary } from "./services/strategyLibrary";
 const Analytics = lazy(() => import("./components/Analytics"));
 const Coaching = lazy(() => import("./components/CoachingChat"));
 const EconomicCalendar = lazy(() => import("./components/EconomicCalendar"));
-const MarketSentiment = lazy(() => import("./components/MarketSentiment"));
+const Technicals = lazy(() => import("./components/Technicals"));
 const InvestingWorkspace = lazy(() => import("./components/InvestingWorkspace"));
 const DayTradingDashboard = lazy(() => import("./components/DayTradingDashboard"));
 const ScreenshotTradeWorkflow = lazy(() => import("./components/ScreenshotTradeWorkflow"));
@@ -1806,7 +1806,7 @@ function App() {
       { page: "Strategy", label: "Strategy", icon: "SY" },
       { page: "Strategy Lab", label: "Strategy Lab", icon: "SL" },
       { page: "Events & News", label: "Events & News", icon: "EV" },
-      { page: "Sentiment", label: "Sentiment", icon: "SN" },
+      { page: "Technicals", label: "Technicals", icon: "TA" },
       { page: "Trades", label: "Trades", icon: "TR" },
       { page: "Analytics", label: "Analytics", icon: "AN" },
       { page: "Coaching", label: "Coaching", icon: "CO" },
@@ -2019,8 +2019,8 @@ function App() {
             <EconomicCalendar />
           )}
 
-          {isDayTrading && activePage === "Sentiment" && (
-            <MarketSentiment />
+          {isDayTrading && activePage === "Technicals" && (
+            <Technicals trades={trades} selectedAsset={selectedAsset} />
           )}
 
           {isDayTrading && activePage === "Strategy Lab" && (
