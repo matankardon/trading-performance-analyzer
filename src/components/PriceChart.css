@@ -1,0 +1,60 @@
+.price-chart-stack {
+  display: grid;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+
+.price-chart-stage {
+  position: relative;
+  width: 100%;
+  min-width: 0;
+}
+
+.price-chart-canvas,
+.price-chart-indicator-pane > div {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, .2);
+  border-radius: 8px;
+  background: #0b131e;
+}
+
+.price-chart-canvas {
+  height: 100%;
+}
+
+.price-chart-risk-zone {
+  position: absolute;
+  z-index: 2;
+  left: 10%;
+  width: 76%;
+  pointer-events: none;
+}
+
+.price-chart-indicator-pane {
+  display: grid;
+  gap: 4px;
+  color: #aebaca;
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 10px;
+}
+
+.price-chart-indicator-pane > div {
+  height: 100px;
+}
+
+@media (max-width: 500px) {
+  .price-chart-indicator-pane > div {
+    height: 84px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .price-chart-stack,
+  .price-chart-canvas,
+  .price-chart-indicator-pane > div {
+    scroll-behavior: auto;
+  }
+}

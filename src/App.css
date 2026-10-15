@@ -6885,13 +6885,200 @@ nav {
 ========================================= */
 
 .trade-details-modal {
-  width: min(720px, 100%);
+  width: min(1000px, calc(100vw - 32px));
   max-height: 92vh;
   overflow-y: auto;
-  background: white;
+  background: var(--color-bg-elevated, #151515);
+  color: var(--ink, #e8edf4);
+  border: 1px solid rgba(212, 175, 55, .28);
   border-radius: 14px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.18);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
   padding: 24px;
+}
+
+.trade-details-modal .trade-detail-result,
+.trade-details-modal .trade-detail-grid > div,
+.trade-details-modal .detail-check,
+.trade-details-modal .trade-notes {
+  background: rgba(13, 13, 13, .72);
+  border-color: rgba(212, 175, 55, .18);
+  color: var(--ink, #e8edf4);
+}
+
+.trade-details-modal .trade-detail-grid strong,
+.trade-details-modal .detail-check strong,
+.trade-details-modal .trade-detail-result strong {
+  color: var(--ink, #e8edf4);
+}
+
+.trade-chart-overview {
+  min-width: 0;
+  margin: 16px 0 22px;
+  padding: 14px;
+  border: 1px solid rgba(212, 175, 55, .24);
+  border-radius: 10px;
+  background: rgba(13, 13, 13, .46);
+}
+
+.trade-chart-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.trade-chart-heading h3,
+.trade-levels-diagram h3 {
+  margin: 3px 0 0;
+  color: var(--ink, #e8edf4);
+  font-size: 15px;
+}
+
+.trade-chart-source,
+.trade-chart-note {
+  margin: 8px 0 12px;
+  color: var(--ink-faint, #9eacbd);
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+  font-size: 10px;
+}
+
+.trade-chart-timeframes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.trade-chart-timeframes button {
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid rgba(212, 175, 55, .26);
+  border-radius: 5px;
+  background: rgba(13, 13, 13, .75);
+  color: var(--ink-soft, #aebaca);
+  font: 10px "IBM Plex Mono", "Courier New", monospace;
+  cursor: pointer;
+}
+
+.trade-chart-timeframes button.selected {
+  border-color: var(--color-gold, #d4af37);
+  color: var(--color-gold, #d4af37);
+}
+
+.trade-chart-legend,
+.trade-level-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 10px 0;
+  color: var(--ink-soft, #aebaca);
+  font: 10px "IBM Plex Mono", "Courier New", monospace;
+}
+
+.trade-chart-indicators {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+  color: var(--ink-soft, #aebaca);
+  font-size: 10px;
+}
+
+.trade-chart-indicators > span:first-child {
+  flex: 1 0 100%;
+}
+
+.trade-chart-indicators .chart-indicator-chip {
+  padding: 4px 7px;
+  border: 1px solid rgba(212, 175, 55, .18);
+  border-radius: 5px;
+}
+
+.trade-symbol-mapping {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(212, 175, 55, .2);
+  border-radius: 8px;
+}
+
+.trade-symbol-mapping p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--ink-soft, #aebaca);
+  font-size: 11px;
+}
+
+.trade-symbol-mapping label {
+  display: grid;
+  gap: 5px;
+  color: var(--ink-soft, #aebaca);
+  font-size: 10px;
+}
+
+.trade-symbol-mapping input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid rgba(212, 175, 55, .28);
+  border-radius: 5px;
+  padding: 8px;
+  background: #0d0d0d;
+  color: var(--ink, #e8edf4);
+}
+
+.trade-chart-loading {
+  min-height: 280px;
+  border-radius: 8px;
+}
+
+.trade-levels-diagram {
+  max-width: 600px;
+  margin: 18px auto 0;
+}
+
+.trade-level-ladder {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  margin: 18px 0;
+  padding-left: 24px;
+}
+
+.trade-level-ladder::before {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 7px;
+  width: 2px;
+  background: linear-gradient(#78c995, #d4af37, #df858d);
+  content: "";
+}
+
+.trade-level-rung {
+  display: grid;
+  grid-template-columns: 10px minmax(90px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  color: var(--ink-soft, #aebaca);
+  font-size: 11px;
+}
+
+.trade-level-marker {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.trade-level-rung strong {
+  color: var(--ink, #e8edf4);
+  font-family: "IBM Plex Mono", "Courier New", monospace;
+}
+
+.trade-level-summary strong {
+  color: var(--ink, #e8edf4);
 }
 
 .trade-detail-result {
@@ -7077,6 +7264,36 @@ nav {
 }
 
 @media (max-width: 500px) {
+  .trade-details-modal {
+    width: min(380px, calc(100vw - 20px));
+    max-height: 94vh;
+    padding: 14px;
+  }
+
+  .trade-chart-overview {
+    padding: 10px;
+  }
+
+  .trade-chart-heading {
+    display: grid;
+  }
+
+  .trade-chart-timeframes {
+    width: 100%;
+  }
+
+  .trade-chart-timeframes button {
+    flex: 1 1 44px;
+  }
+
+  .trade-symbol-mapping {
+    grid-template-columns: 1fr;
+  }
+
+  .trade-symbol-mapping p {
+    grid-column: auto;
+  }
+
   .trade-detail-grid {
     grid-template-columns: 1fr;
   }

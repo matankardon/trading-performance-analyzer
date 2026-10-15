@@ -11,6 +11,7 @@ import { dbToTrade, emptyTrade, tradeToDb } from "./models/trade";
 import { INDICATORS, SETUP_CONDITIONS } from "./constants/strategyOptions";
 import { fetchStrategyLibrary } from "./services/strategyLibrary";
 import { tradeAssetSuggestions } from "./services/tradeAssetSuggestions";
+import { openCreatedTradeOverview } from "./services/tradeOverview";
 
 const Analytics = lazy(() => import("./components/Analytics"));
 const Coaching = lazy(() => import("./components/CoachingChat"));
@@ -21,6 +22,7 @@ const DayTradingDashboard = lazy(() => import("./components/DayTradingDashboard"
 const ScreenshotTradeWorkflow = lazy(() => import("./components/ScreenshotTradeWorkflow"));
 const StrategyLab = lazy(() => import("./components/StrategyLab"));
 const JournalCalendar = lazy(() => import("./components/JournalCalendar"));
+const TradeChartOverview = lazy(() => import("./components/TradeChartOverview"));
 
 import "./App.css";
 
@@ -657,6 +659,7 @@ function App() {
       ...form,
       userId: currentUser.id,
     });
+    let createdTradeForOverview = null;
 
     try {
       if (editingTrade) {
@@ -767,9 +770,11 @@ function App() {
           dbToTrade(data),
           ...previous,
         ]);
+        createdTradeForOverview = dbToTrade(data);
       }
 
       closeTradeForm();
+      openCreatedTradeOverview(createdTradeForOverview, { setActivePage, setSelectedTrade });
     } catch (error) {
       console.error(
         "Unexpected trade save error:",
@@ -1118,6 +1123,8 @@ function App() {
               }
             </span>
           </div>
+
+          <TradeChartOverview trade={selectedTrade} strategyLibrary={strategyLibrary} />
 
           <div className="trade-detail-grid">
             <div>

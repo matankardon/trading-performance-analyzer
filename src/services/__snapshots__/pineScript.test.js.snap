@@ -1,0 +1,172 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`generatePine > matches Pine output snapshots for supported indicator and setup combinations 1`] = `
+{
+  "bollingerAndRsi": {
+    "notIncluded": [],
+    "notes": [],
+    "scripts": [
+      {
+        "code": "//@version=6
+// Strategy: Mean Reversion / v2
+indicator("Mean Reversion v2 / Overlay", overlay=true)
+bbLength = input.int(21, "Bollinger Length", minval=1)
+bbMultiplier = input.float(1.8, "Bollinger Deviation Multiplier", minval=0, step=0.1)
+bbBasis = ta.sma(close, bbLength)
+bbDeviation = ta.stdev(close, bbLength, true) * bbMultiplier
+bbUpper = bbBasis + bbDeviation
+bbLower = bbBasis - bbDeviation
+plot(bbUpper, "BB Upper", color=color.teal)
+plot(bbBasis, "BB Basis", color=color.yellow)
+plot(bbLower, "BB Lower", color=color.teal)
+",
+        "id": "overlay",
+        "title": "Overlay",
+      },
+      {
+        "code": "//@version=6
+// Strategy: Mean Reversion / v2
+indicator("Mean Reversion v2 / Oscillators", overlay=false)
+rsiLength = input.int(10, "RSI Length", minval=1)
+rsiOversold = input.float(25, "RSI Oversold", minval=0, step=1)
+rsiOverbought = input.float(75, "RSI Overbought", minval=0, step=1)
+rsiValue = ta.rsi(close, rsiLength)
+plot(rsiValue, "RSI", color=color.purple)
+hline(rsiOversold, "RSI Oversold", color=color.new(color.green, 35))
+hline(rsiOverbought, "RSI Overbought", color=color.new(color.red, 35))
+",
+        "id": "oscillators",
+        "title": "Oscillators",
+      },
+    ],
+  },
+  "bollingerOnly": {
+    "notIncluded": [],
+    "notes": [],
+    "scripts": [
+      {
+        "code": "//@version=6
+// Strategy: Bands / v3
+indicator("Bands v3 / Overlay", overlay=true)
+bbLength = input.int(18, "Bollinger Length", minval=1)
+bbMultiplier = input.float(2.4, "Bollinger Deviation Multiplier", minval=0, step=0.1)
+bbBasis = ta.sma(close, bbLength)
+bbDeviation = ta.stdev(close, bbLength, true) * bbMultiplier
+bbUpper = bbBasis + bbDeviation
+bbLower = bbBasis - bbDeviation
+plot(bbUpper, "BB Upper", color=color.teal)
+plot(bbBasis, "BB Basis", color=color.yellow)
+plot(bbLower, "BB Lower", color=color.teal)
+",
+        "id": "overlay",
+        "title": "Overlay",
+      },
+    ],
+  },
+  "fvgSessionStochastic": {
+    "notIncluded": [],
+    "notes": [
+      "The FVG drawing uses the app's exact 3-bar gap definition; its same-bar alert does not reproduce later retest and setup-sequence context.",
+      "Stochastic confirmation mirrors the app's K/D turn rule; its confirmation thresholds remain fixed at 20 and 80.",
+    ],
+    "scripts": [
+      {
+        "code": "//@version=6
+// Strategy: Session Setup / v4
+indicator("Session Setup v4 / Overlay", overlay=true)
+// App-equivalent 3-bar FVG detection: current bar gaps over two bars ago.
+bullishFvg = bar_index >= 2 and low > high[2]
+bearishFvg = bar_index >= 2 and high < low[2]
+fvgDetected = bullishFvg or bearishFvg
+if bullishFvg
+    box.new(bar_index - 2, low, bar_index, high[2], bgcolor=color.new(color.green, 86), border_color=color.new(color.green, 45))
+if bearishFvg
+    box.new(bar_index - 2, low[2], bar_index, high, bgcolor=color.new(color.red, 86), border_color=color.new(color.red, 45))
+strategySession = input.session("0300-1200", "London Session · New York")
+inStrategySession = not na(time(timeframe.period, strategySession, "America/New_York"))
+bgcolor(inStrategySession ? color.new(color.yellow, 92) : na)
+setupStochKLength = input.int(10, "Setup Stochastic K Length", minval=1)
+setupStochDLength = input.int(4, "Setup Stochastic D Length", minval=1)
+setupStochK = ta.stoch(close, high, low, setupStochKLength)
+setupStochD = ta.sma(setupStochK, setupStochDLength)
+// Confirmation mirrors app isStochasticConfirming: fixed 20/80 turn boundaries.
+stochasticBullish = setupStochK[1] < 20 and setupStochK[1] <= setupStochD[1] and setupStochK > setupStochD
+stochasticBearish = setupStochK[1] > 80 and setupStochK[1] >= setupStochD[1] and setupStochK < setupStochD
+stochasticConfirmed = stochasticBullish or stochasticBearish
+setupAligned = fvgDetected and inStrategySession and stochasticConfirmed
+plotshape(setupAligned, title="Setup", text="SETUP", style=shape.labelup, location=location.belowbar, color=color.new(color.yellow, 0), textcolor=color.black)
+alertcondition(setupAligned, title="Emitted setup conditions aligned", message="Generated emitted setup conditions aligned on this bar.")
+",
+        "id": "overlay",
+        "title": "Overlay",
+      },
+      {
+        "code": "//@version=6
+// Strategy: Session Setup / v4
+indicator("Session Setup v4 / Oscillators", overlay=false)
+stochKLength = input.int(10, "Stochastic K Length", minval=1)
+stochDLength = input.int(4, "Stochastic D Length", minval=1)
+stochOversold = input.float(20, "Stochastic Oversold", minval=0, step=1)
+stochOverbought = input.float(80, "Stochastic Overbought", minval=0, step=1)
+stochK = ta.stoch(close, high, low, stochKLength)
+stochD = ta.sma(stochK, stochDLength)
+plot(stochK, "Stochastic %K", color=color.yellow)
+plot(stochD, "Stochastic %D", color=color.blue)
+hline(stochOversold, "Stochastic Oversold", color=color.new(color.green, 35))
+hline(stochOverbought, "Stochastic Overbought", color=color.new(color.red, 35))
+",
+        "id": "oscillators",
+        "title": "Oscillators",
+      },
+    ],
+  },
+  "manualOnly": {
+    "notIncluded": [
+      "Liquidity Sweep",
+      "MSS",
+      "Order Block",
+      "No supported indicator or setup condition is enabled; nothing can be generated.",
+    ],
+    "notes": [],
+    "scripts": [],
+  },
+  "movingAveragesAndMacd": {
+    "notIncluded": [],
+    "notes": [],
+    "scripts": [
+      {
+        "code": "//@version=6
+// Strategy: Trend / v1
+indicator("Trend v1 / Overlay", overlay=true)
+smaLength = input.int(40, "SMA Length", minval=1)
+smaRelation = input.string("below", "SMA Price Relation", options=["above", "below"])
+smaValue = ta.sma(close, smaLength)
+plot(smaValue, "SMA", color=color.yellow)
+emaLength = input.int(12, "EMA Length", minval=1)
+emaRelation = input.string("above", "EMA Price Relation", options=["above", "below"])
+emaValue = ta.ema(close, emaLength)
+plot(emaValue, "EMA", color=color.aqua)
+",
+        "id": "overlay",
+        "title": "Overlay",
+      },
+      {
+        "code": "//@version=6
+// Strategy: Trend / v1
+indicator("Trend v1 / Oscillators", overlay=false)
+macdFastLength = input.int(8, "MACD Fast Length", minval=1)
+macdSlowLength = input.int(21, "MACD Slow Length", minval=1)
+macdSignalLength = input.int(5, "MACD Signal Length", minval=1)
+macdDirection = input.string("bearish", "MACD Crossover", options=["bullish", "bearish"])
+[macdLine, macdSignal, macdHistogram] = ta.macd(close, macdFastLength, macdSlowLength, macdSignalLength)
+plot(macdLine, "MACD", color=color.yellow)
+plot(macdSignal, "MACD Signal", color=color.blue)
+plot(macdHistogram, "MACD Histogram", style=plot.style_columns, color=macdHistogram >= 0 ? color.green : color.red)
+",
+        "id": "oscillators",
+        "title": "Oscillators",
+      },
+    ],
+  },
+}
+`;

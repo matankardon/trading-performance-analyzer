@@ -15,70 +15,6 @@
   padding: 16px;
 }
 
-.chart-view-switch {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-self: center;
-  margin-left: auto;
-  gap: 4px;
-  border: 1px solid var(--line, #314259);
-  border-radius: 6px;
-  padding: 3px;
-}
-
-.chart-view-switch button {
-  min-height: 32px;
-  border: 0;
-  border-radius: 4px;
-  padding: 5px 9px;
-  background: transparent;
-  color: var(--ink-soft, #9eacbd);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.chart-view-switch button.selected {
-  background: rgba(212, 175, 55, 0.15);
-  color: var(--color-gold, #d4af37);
-}
-
-.chart-range-picker {
-  display: flex;
-  flex: 1 1 300px;
-  flex-wrap: wrap;
-  gap: 4px;
-  min-width: 0;
-  margin: 0;
-  border: 0;
-  padding: 0;
-}
-
-.chart-range-picker legend {
-  width: 100%;
-  padding: 0 0 5px;
-  color: var(--ink-soft, #9eacbd);
-  font-size: 10px;
-}
-
-.chart-range-picker button {
-  min-height: 34px;
-  border: 1px solid var(--line, #314259);
-  border-radius: 5px;
-  padding: 5px 8px;
-  background: rgba(8, 14, 23, 0.75);
-  color: var(--ink-soft, #9eacbd);
-  font: inherit;
-  font-size: 11px;
-  cursor: pointer;
-}
-
-.chart-range-picker button.selected {
-  border-color: var(--color-gold, #d4af37);
-  color: var(--color-gold, #d4af37);
-  background: rgba(212, 175, 55, 0.1);
-}
-
 .chart-refresh {
   min-height: 36px;
 }
@@ -272,123 +208,7 @@
   font-size: 15px;
 }
 
-.chart-my-trades-controls {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
 
-.chart-asset-picker,
-.chart-symbol-mapping {
-  min-width: 150px;
-  display: grid;
-  gap: 6px;
-  color: var(--color-muted, #9ba7b4);
-  font-size: 11px;
-}
-
-.chart-asset-picker select,
-.chart-symbol-mapping input {
-  width: 100%;
-  min-width: 0;
-  border: 1px solid rgba(212, 175, 55, .35);
-  border-radius: 6px;
-  padding: 7px;
-  color: inherit;
-  background: #0d0d0d;
-  font: inherit;
-}
-
-.chart-symbol-mapping {
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  flex: 1 1 100%;
-  padding: 8px;
-  border: 1px solid rgba(212, 175, 55, .2);
-  border-radius: 8px;
-}
-
-.chart-symbol-mapping p {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-
-.chart-symbol-mapping label {
-  display: grid;
-  gap: 4px;
-}
-
-.journal-trades-timeline {
-  min-width: 0;
-  padding: 12px;
-}
-
-.journal-trades-timeline h3 {
-  margin: 0 0 10px;
-  color: var(--color-gold, #d4af37);
-  font-size: 13px;
-}
-
-.journal-timeline-chart {
-  width: 100%;
-  min-width: 0;
-  height: 280px;
-}
-
-.journal-timeline-tooltip {
-  display: grid;
-  gap: 4px;
-  padding: 9px;
-  border: 1px solid rgba(212, 175, 55, .4);
-  border-radius: 6px;
-  background: #0d0d0d;
-  color: #e8edf1;
-  font-size: 11px;
-}
-
-.journal-trades-timeline > p {
-  margin: 8px 0 0;
-  color: var(--color-muted, #9ba7b4);
-}
-
-.journal-trades-timeline .chart-muted-note {
-  font-size: 11px;
-}
-
-.chart-my-trades-controls .chart-range-picker {
-  display: flex;
-  align-items: end;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-  max-width: 100%;
-}
-
-.chart-my-trades-controls .chart-range-picker {
-  flex: 0 1 auto;
-}
-
-.chart-overlay-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 34px;
-  color: var(--ink-soft, #9eacbd);
-  font-size: 11px;
-}
-
-.chart-overlay-toggle input {
-  accent-color: var(--color-gold, #d4af37);
-}
-
-.trading-chart-canvas {
-  width: 100%;
-  height: clamp(360px, 54vh, 580px);
-  min-width: 0;
-}
 
 .trading-indicator-pane {
   margin-top: 10px;
@@ -593,22 +413,6 @@
 @media (max-width: 480px) {
   .trading-workspace-card {
     padding: 12px;
-  }
-
-  .chart-range-picker {
-    flex: 1 1 100%;
-  }
-
-  .chart-view-switch {
-    width: 100%;
-  }
-
-  .chart-view-switch button {
-    flex: 1;
-  }
-
-  .trading-chart-canvas {
-    min-height: 380px;
   }
 
   .tradingview-chart-shell {

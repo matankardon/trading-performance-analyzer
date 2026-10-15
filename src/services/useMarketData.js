@@ -5,10 +5,10 @@ import { readSymbolMap, resolveChartSymbol } from "./symbolMap";
 
 export const MARKET_DATA_CACHE_KEY = "tradeCatalystMarketDataCache";
 export const MARKET_DATA_CACHE_TTL = 5 * 60 * 1000;
-export const MARKET_TIMEFRAMES = Object.freeze(["15m", "1h", "4h", "1d"]);
+export const MARKET_TIMEFRAMES = Object.freeze(["1m", "5m", "15m", "1h", "4h", "1d"]);
 export const MARKET_DATA_SOURCE = "Massive via historical-data";
 
-const LOOKBACK_DAYS = Object.freeze({ "15m": 60, "1h": 150, "4h": 500, "1d": 600 });
+const LOOKBACK_DAYS = Object.freeze({ "1m": 5, "5m": 20, "15m": 60, "1h": 150, "4h": 500, "1d": 600 });
 const CACHE_LIMIT = 20;
 const memoryCache = new Map();
 

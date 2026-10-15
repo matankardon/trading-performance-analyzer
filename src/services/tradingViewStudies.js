@@ -44,10 +44,19 @@ export function dedupeVerifiedStudyIds(indicators) {
     .map(({ id }) => id))];
 }
 
-export function studiesForVersion(version) {
+export function studiesForVersion(version, customScriptId = "") {
   const conditions = version?.conditions;
   if (!conditions || typeof conditions !== "object") {
-    return { indicators: [], studies: [], manualConditions: [], manualOnly: false };
+    const customStudy = typeof customScriptId === "string" && customScriptId.trim()
+      ? `PUB;${customScriptId.trim()}`
+      : "";
+    return {
+      indicators: [],
+      studies: customStudy ? [customStudy] : [],
+      manualConditions: [],
+      manualOnly: false,
+      ...(customStudy ? { customScript: { id: customScriptId.trim(), status: "unverified" } } : {}),
+    };
   }
 
   const indicators = INDICATORS.filter(({ key }) => conditions[key]).map((indicator) => {
@@ -64,14 +73,19 @@ export function studiesForVersion(version) {
       parameters,
     };
   });
-  const studies = dedupeVerifiedStudyIds(indicators);
+  const verifiedStudies = dedupeVerifiedStudyIds(indicators);
+  const studies = [...verifiedStudies];
+  const normalizedCustomId = typeof customScriptId === "string" ? customScriptId.trim() : "";
+  const customStudy = normalizedCustomId ? `PUB;${normalizedCustomId}` : "";
+  if (customStudy) studies.push(customStudy);
   const manualConditions = SETUP_CONDITIONS.filter(({ key }) => conditions[key])
     .map(({ key, label }) => ({ key, label, status: "manual" }));
   return {
     indicators,
     studies,
     manualConditions,
-    manualOnly: studies.length === 0 && indicators.length === 0 && manualConditions.length > 0,
+    manualOnly: verifiedStudies.length === 0 && indicators.length === 0 && manualConditions.length > 0,
+    ...(customStudy ? { customScript: { id: normalizedCustomId, status: "unverified" } } : {}),
   };
 }
 

@@ -104,4 +104,11 @@ describe("TradingView study mapping", () => {
     expect(studiesForVersion(null)).toMatchObject({ studies: [], manualOnly: false });
     expect(studiesForVersion({ conditions: {} })).toMatchObject({ studies: [], manualOnly: false });
   });
+
+  it("appends an explicitly supplied custom public script ID without verifying it", () => {
+    const result = studiesForVersion({ conditions: { liquiditySweep: true } }, "public_123");
+    expect(result.studies).toContain("PUB;public_123");
+    expect(result.customScript).toEqual({ id: "public_123", status: "unverified" });
+    expect(result.manualOnly).toBe(true);
+  });
 });
