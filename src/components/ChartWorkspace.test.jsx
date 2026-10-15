@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import ChartWorkspace from "./ChartWorkspace";
-import { fetchHistoricalBars } from "../services/historicalDataService";
+import { fetchMarketBars } from "../services/useMarketData";
 
 const { charts, markerCalls, series, createChartMock } = vi.hoisted(() => ({
   charts: [],
@@ -24,9 +24,8 @@ vi.mock("lightweight-charts", () => ({
   createSeriesMarkers: vi.fn((_series, markers) => markerCalls.push(markers)),
 }));
 
-vi.mock("../services/historicalDataService", () => ({
-  fetchHistoricalBars: vi.fn(),
-  historicalAssetSuggestions: ["AAPL", "MSFT", "NVDA", "TSLA", "AMZN", "META", "SPY", "QQQ"],
+vi.mock("../services/useMarketData", () => ({
+  fetchMarketBars: vi.fn(),
 }));
 
 function sampleBars() {
@@ -86,25 +85,26 @@ describe("ChartWorkspace", () => {
     markerCalls.length = 0;
     localStorage.clear();
     createChartMock.mockImplementation(createMockChart);
-    fetchHistoricalBars.mockResolvedValue(sampleBars());
+    fetchMarketBars.mockResolvedValue({ bars: sampleBars() });
   });
 
   it("shows loading, then real chart content, and reports provider errors with Retry", async () => {
-    fetchHistoricalBars.mockRejectedValueOnce(new Error("Historical provider is unavailable."));
+    fetchMarketBars.mockRejectedValueOnce(new Error("Historical provider is unavailable."));
     render(<ChartWorkspace selectedAsset="AAPL" />);
     fireEvent.click(screen.getByRole("button", { name: "My trades" }));
     expect(screen.getByRole("status")).toHaveTextContent("Loading historical bars");
     expect(await screen.findByRole("alert")).toHaveTextContent("Historical provider is unavailable.");
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(screen.getByLabelText("Historical candlestick chart")).toBeInTheDocument());
-    expect(fetchHistoricalBars).toHaveBeenCalledTimes(2);
+    expect(fetchMarketBars).toHaveBeenCalledTimes(2);
   });
 
   it("shows the provider's empty-range state", async () => {
-    fetchHistoricalBars.mockResolvedValue([]);
+    fetchMarketBars.mockResolvedValue({ bars: [] });
     render(<ChartWorkspace selectedAsset="AAPL" />);
     fireEvent.click(screen.getByRole("button", { name: "My trades" }));
-    expect(await screen.findByText("No bars in this range")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Trades timeline" })).toBeInTheDocument();
+    expect(screen.getByText("No journaled trades for this asset and date range.")).toBeInTheDocument();
   });
 
   it("opens the existing trade detail flow from a clicked chart marker and toggles journal markers", async () => {
@@ -154,6 +154,45 @@ describe("ChartWorkspace", () => {
     unmount();
     render(<ChartWorkspace selectedAsset="AAPL" />);
     expect(screen.getByRole("button", { name: "My trades" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("offers an explicit typo correction and persists the chosen asset mapping", async () => {
+    const trade = sampleTrade({ asset: "xaussd" });
+    render(<ChartWorkspace selectedAsset="xaussd" trades={[trade]} />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
+
+    expect(await screen.findByText('Unrecognized asset "xaussd".')).toBeInTheDocument();
+    expect(fetchMarketBars).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Did you mean XAUUSD?" }));
+
+    await waitFor(() => expect(fetchMarketBars).toHaveBeenCalledWith(
+      "XAUUSD",
+      "15m",
+      expect.objectContaining({ startDate: expect.any(String), endDate: expect.any(String), bypassCache: false }),
+    ));
+    expect(JSON.parse(localStorage.getItem("tradeCatalystChartSymbolMap"))).toEqual({ xaussd: "XAUUSD" });
+  });
+
+  it("uses the provider-variant fetch abstraction for journal symbols", async () => {
+    render(<ChartWorkspace selectedAsset="EURUSD" trades={[sampleTrade({ asset: "EURUSD" })]} />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
+    await waitFor(() => expect(fetchMarketBars).toHaveBeenCalledWith(
+      "EURUSD",
+      "15m",
+      expect.objectContaining({ startDate: expect.any(String), endDate: expect.any(String) }),
+    ));
+  });
+
+  it("shows journal prices with wins, losses, and missing exits when bars are unavailable", async () => {
+    fetchMarketBars.mockResolvedValueOnce({ bars: [] });
+    const trades = [
+      sampleTrade({ id: "win", pnl: 50 }),
+      sampleTrade({ id: "loss", date: new Date().toISOString().slice(0, 10), entry: 110, exit: null, pnl: -15, stopLoss: 105 }),
+    ];
+    render(<ChartWorkspace selectedAsset="AAPL" trades={trades} />);
+    fireEvent.click(screen.getByRole("button", { name: "My trades" }));
+    expect(await screen.findByText(/No price bars for this symbol on your data plan/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Trades timeline" })).toBeInTheDocument();
   });
 
   it("shows truthful study statuses in a compact row without a trade plan or checklist", () => {
@@ -229,19 +268,17 @@ describe("ChartWorkspace", () => {
     const msftTrade = sampleTrade({ id: "trade-msft", asset: "MSFT" });
     render(<ChartWorkspace selectedAsset="AAPL" trades={[aaplTrade, msftTrade]} />);
     fireEvent.click(screen.getByRole("button", { name: "My trades" }));
-    await waitFor(() => expect(fetchHistoricalBars).toHaveBeenCalledWith(
+    await waitFor(() => expect(fetchMarketBars).toHaveBeenCalledWith(
       "AAPL",
       "15m",
-      expect.any(String),
-      expect.any(String),
+      expect.objectContaining({ startDate: expect.any(String), endDate: expect.any(String) }),
     ));
     fireEvent.click(screen.getByRole("button", { name: /Trades on this chart ·/ }));
     fireEvent.change(screen.getByRole("combobox", { name: "Filter trades by asset" }), { target: { value: "MSFT" } });
-    await waitFor(() => expect(fetchHistoricalBars).toHaveBeenCalledWith(
+    await waitFor(() => expect(fetchMarketBars).toHaveBeenCalledWith(
       "MSFT",
       "15m",
-      expect.any(String),
-      expect.any(String),
+      expect.objectContaining({ startDate: expect.any(String), endDate: expect.any(String) }),
     ));
     expect(screen.getByRole("heading", { name: "MSFT · 15m" })).toBeInTheDocument();
   });

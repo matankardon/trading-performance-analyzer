@@ -2538,6 +2538,9 @@ nav {
 
 .nav-dropdown {
   left: 0;
+  max-height: min(82vh, 620px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .profile-dropdown {
@@ -2581,6 +2584,20 @@ nav {
   width: 22px;
   color: var(--color-gold);
   font-size: 9px;
+}
+
+.nav-dropdown-category {
+  margin: 8px 10px 2px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(212, 175, 55, 0.14);
+  color: var(--color-gold);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+}
+
+.nav-dropdown-category:first-child {
+  border-top: 0;
 }
 
 .profile-dropdown-item {

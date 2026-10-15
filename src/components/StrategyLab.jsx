@@ -32,6 +32,7 @@ import { fetchStrategyLibrary } from "../services/strategyLibrary";
 import { compareForwardToBacktest, computeAdherence, computeForwardStats } from "../services/forwardTestStats";
 import { supportedHistoricalTimeframes } from "../../supabase/functions/_shared/timeframe";
 import TradeLog from "./TradeLog";
+import StrategyPositionSize from "./StrategyPositionSize";
 import "./StrategyLab.css";
 
 const backtestSessions = ["All sessions", "New York", "London", "Asia", "Overlap"];
@@ -734,6 +735,15 @@ function ForwardTest({ strategies, selectedStrategy, trades, userId }) {
 
 function StrategyLab({ initialView = "library", userId, trades = [], onStrategiesChange }) {
   const [view, setView] = useState(initialView);
+  const [positionPlan, setPositionPlan] = useState({
+    direction: "Long",
+    entry: "",
+    stopLoss: "",
+    takeProfit: "",
+    riskAmount: "",
+    riskType: "amount",
+    accountBalance: "",
+  });
   const [strategies, setStrategies] = useState([]);
   const [draft, setDraft] = useState(createStrategyDraft());
   const [request, setRequest] = useState(createBacktestRequest());
@@ -811,6 +821,7 @@ function StrategyLab({ initialView = "library", userId, trades = [], onStrategie
   return (
     <div className="strategy-lab-page">
       <LabHeader view={view} onViewChange={setView} />
+      <StrategyPositionSize values={positionPlan} onChange={setPositionPlan} />
       {view === "library" && <StrategyLibrary strategies={strategies} onCreate={createStrategy} onSelect={selectStrategy} />}
       {view === "builder" && <StrategyBuilder draft={draft} setDraft={setDraft} onSave={saveVersion} selectedStrategy={selectedStrategy} />}
       {view === "backtesting" && <BacktestWorkspace strategies={strategies} request={request} setRequest={setRequest} userId={userId} />}

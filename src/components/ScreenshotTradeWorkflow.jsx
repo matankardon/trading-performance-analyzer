@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { supabase } from "../supabaseClient";
 import { INDICATORS, SETUP_CONDITIONS } from "../constants/strategyOptions";
+import { tradeAssetSuggestions } from "../services/tradeAssetSuggestions";
 
 const extractionFields = [
   ["asset", "Asset"],
@@ -290,8 +291,11 @@ function ScreenshotTradeWorkflow({ onClose, onConfirm, showConsent = false, onCo
                   }
                   const isNumeric = numericExtractionFields.has(key);
                   const annotation = isNumeric ? getAnnotation(extraction[key]) : "";
-                  return <label className="extraction-field" key={key}><span>{label}<em>NOT DETECTED</em></span><input name={key} type={isNumeric ? "number" : "text"} step={isNumeric ? "any" : undefined} value={isNumeric ? extractNumericValue(extraction[key]) : extraction[key]} onChange={handleFieldChange} placeholder="Not detected" />{annotation && <small className="field-ai-hint">{annotation}</small>}</label>;
+                  return <label className="extraction-field" key={key}><span>{label}<em>NOT DETECTED</em></span><input name={key} type={isNumeric ? "number" : "text"} step={isNumeric ? "any" : undefined} list={key === "asset" ? "screenshot-trade-asset-suggestions" : undefined} value={isNumeric ? extractNumericValue(extraction[key]) : extraction[key]} onChange={handleFieldChange} placeholder="Not detected" />{annotation && <small className="field-ai-hint">{annotation}</small>}</label>;
                 })}
+                  <datalist id="screenshot-trade-asset-suggestions">
+                    {tradeAssetSuggestions(trades).map((asset) => <option key={asset} value={asset} />)}
+                  </datalist>
                   <label className="extraction-field"><span>Strategy Version<em>OPTIONAL</em></span><select value={strategyVersionId} onChange={(event) => setStrategyVersionId(event.target.value)} disabled={!selectedStrategy}><option value="">Select version</option>{(selectedStrategy?.versions || []).map((version) => <option value={version.id} key={version.id}>v{version.version}</option>)}</select></label>
                 </div>
                 {selectedVersion && <p className="forward-test-link-note">Counts toward Forward Test of {selectedStrategy.name} v{selectedVersion.version} ({forwardTradeCount} trades so far)</p>}

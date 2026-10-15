@@ -29,6 +29,7 @@ import {
 } from "../services/coachChat";
 import { deriveConversationTitle, groupConversations, relativeConversationTime } from "../services/coachHistory";
 import { cleanCoachTitle, isFullReportReply, suggestedFollowUps } from "../services/coachChatPresentation";
+import BrandLogo from "./BrandLogo";
 import "./CoachingChat.css";
 
 const prompts = [
@@ -70,7 +71,7 @@ function CoachMessage({ message, isLastAssistant, isLastUser, isLoading, onCopy,
   const isUser = message.role === "user";
   return (
     <article className={`coach-message ${isUser ? "coach-message-user" : "coach-message-assistant"}`}>
-      {!isUser && <span className="coach-avatar" aria-hidden="true">C</span>}
+      {!isUser && <BrandLogo className="coach-avatar" />}
       <div className="coach-message-content">
         {isUser
           ? <p>{message.content}</p>
@@ -736,7 +737,7 @@ function CoachingChat({
 
         {!hasEnoughTrades && (
           <section className="coach-gate" aria-live="polite">
-            <span className="coach-avatar coach-avatar-large" aria-hidden="true">C</span>
+            <BrandLogo className="coach-avatar coach-avatar-large" />
             <h2>Log 10 trades to start coaching ({context.totalTrades}/10)</h2>
             <p>Journal-pattern questions need 10 trades. You can still review a saved screenshot or prepare a trade draft.</p>
           </section>
@@ -745,7 +746,7 @@ function CoachingChat({
           {isLoadingConversation && <p className="coach-thread-status">Loading conversation...</p>}
           {hasEnoughTrades && !messages.length && !isLoadingConversation && (
             <div className="coach-welcome">
-              <span className="coach-avatar coach-avatar-large" aria-hidden="true">C</span>
+              <BrandLogo className="coach-avatar coach-avatar-large" />
               <h2>What would you like to understand about your trading?</h2>
               <p>I’ll use your journal data and label small samples as tentative.</p>
             </div>

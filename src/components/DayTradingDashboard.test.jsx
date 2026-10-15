@@ -130,7 +130,7 @@ describe("DayTradingDashboard market screens", () => {
     expect(screen.getByText(`Based on ${result.components.filter(({ available }) => available).length} of 5 components`)).toBeInTheDocument();
   });
 
-  it("uses the latest saved checklist and links to Strategy when none is persisted", async () => {
+  it("hides Setup without a checklist and shows the persisted result when present", async () => {
     const strategyLibrary = [{
       id: "strategy-1",
       name: "Opening range",
@@ -144,13 +144,7 @@ describe("DayTradingDashboard market screens", () => {
     const { rerender } = render(
       <DayTradingDashboard page="Overview" selectedAsset="AAPL" strategyLibrary={strategyLibrary} />,
     );
-    expect(screen.getByText(/No saved checklist/)).toBeInTheDocument();
-    const onPageChange = vi.fn();
-    rerender(
-      <DayTradingDashboard page="Overview" selectedAsset="AAPL" strategyLibrary={strategyLibrary} onPageChange={onPageChange} />,
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Run your checklist in the Strategy tab" }));
-    expect(onPageChange).toHaveBeenCalledWith("Strategy");
+    expect(screen.queryByText("Setup")).not.toBeInTheDocument();
 
     localStorage.setItem("tradeCatalystSetupChecklist", JSON.stringify({
       __lastUsedVersionId: "version-1",

@@ -8,7 +8,6 @@ import {
 } from "../services/useMarketData";
 import { readLastUsedSetupChecklist } from "../services/setupChecklist";
 import ChartWorkspace from "./ChartWorkspace";
-import StrategyWorkspace from "./StrategyWorkspace";
 import "./MarketWorkspace.css";
 
 const COMPONENT_LABELS = Object.freeze({
@@ -214,18 +213,11 @@ function BiasSummary({ result }) {
     : `${result.bias} · trend, structure, and momentum do not all agree`;
 }
 
-function SetupCard({ checklist, onPageChange }) {
-  return checklist ? (
+function SetupCard({ checklist }) {
+  return (
     <div>
       <strong>{checklist.score.met} of {checklist.score.total} conditions · {checklist.band}</strong>
       <small>{checklist.strategy.name} · v{checklist.version.version}</small>
-    </div>
-  ) : (
-    <div>
-      <strong>No saved checklist</strong>
-      <button type="button" className="market-inline-link" onClick={() => onPageChange("Strategy")}>
-        Run your checklist in the Strategy tab
-      </button>
     </div>
   );
 }
@@ -260,7 +252,7 @@ function OverviewPage({ market, trades, strategyLibrary, selectedAsset, onAssetC
           <section className="market-workspace-card market-status-strip">
             <div><span>Market status</span><strong>{result?.band || "Unavailable"}</strong><small>Environment quality, not price direction</small></div>
             <div><span>Bias</span><strong>{result?.bias || "Unavailable"}</strong><small>{BiasSummary({ result })}</small></div>
-            <div><span>Setup</span><SetupCard checklist={checklist} onPageChange={onPageChange} /></div>
+            {checklist && <div><span>Setup</span><SetupCard checklist={checklist} /></div>}
           </section>
           <button type="button" className="market-action-link market-more-button" onClick={() => setShowMore((visible) => !visible)}>
             {showMore ? "Hide more detail" : "See more detail"}
@@ -274,7 +266,7 @@ function OverviewPage({ market, trades, strategyLibrary, selectedAsset, onAssetC
           )}
           <nav className="market-continue-links" aria-label="Continue to">
             <span>Continue to</span>
-            {["Markets", "Strategy", "Chart", "Events & News", "Technicals"].map((page) => (
+            {["Markets", "Strategy Lab", "Chart", "Events & News", "Technicals"].map((page) => (
               <button type="button" key={page} onClick={() => onPageChange(page)}>{page} <span aria-hidden="true">→</span></button>
             ))}
           </nav>
@@ -342,8 +334,6 @@ function DayTradingDashboard({
   trades = [],
   strategyLibrary = [],
   onAddTrade,
-  onLogTrade,
-  onAskCoach,
   onViewTrade,
   selectedAsset = "",
   onAssetChange = () => {},
@@ -390,7 +380,6 @@ function DayTradingDashboard({
           onPageChange={onPageChange}
         />
       )}
-      {page === "Strategy" && <StrategyWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onPageChange={onPageChange} onLogTrade={onLogTrade} onAskCoach={onAskCoach} />}
       {page === "Chart" && <ChartWorkspace trades={trades} strategyLibrary={strategyLibrary} selectedAsset={selectedAsset} onAssetChange={onAssetChange} onViewTrade={onViewTrade} onPageChange={onPageChange} />}
     </div>
   );

@@ -30,8 +30,8 @@ export function providerSymbolVariants(symbol) {
   return [base];
 }
 
-function cacheKey(symbol, timeframe) {
-  return `${symbol}:${timeframe}`;
+function cacheKey(symbol, timeframe, startDate, endDate) {
+  return `${symbol}:${timeframe}${startDate && endDate ? `:${startDate}:${endDate}` : ""}`;
 }
 
 function readSessionCache(key, now) {
@@ -91,18 +91,30 @@ function isSymbolNotFound(error) {
     || /symbol.{0,20}(not found|invalid)|not found.{0,20}symbol/i.test(error?.message || "");
 }
 
-export async function fetchMarketBars(symbol, timeframe, { signal, bypassCache = false } = {}) {
+export async function fetchMarketBars(symbol, timeframe, {
+  signal,
+  bypassCache = false,
+  startDate: requestedStart,
+  endDate: requestedEnd,
+} = {}) {
   const resolved = normalizedSymbol(symbol);
   if (!resolved) throw new Error(`Could not resolve "${symbol}" to a market-data symbol.`);
   if (!MARKET_TIMEFRAMES.includes(timeframe)) throw new Error(`Unsupported market timeframe: ${timeframe}.`);
 
-  const key = cacheKey(resolved, timeframe);
+  const defaults = historicalDateRange(timeframe);
+  const startDate = requestedStart || defaults.startDate;
+  const endDate = requestedEnd || defaults.endDate;
+  const key = cacheKey(
+    resolved,
+    timeframe,
+    requestedStart && requestedEnd ? startDate : undefined,
+    requestedStart && requestedEnd ? endDate : undefined,
+  );
   if (!bypassCache) {
     const cached = readCache(key, Date.now());
     if (cached) return { bars: cached.bars, providerSymbol: cached.providerSymbol, cached: true };
   }
 
-  const { startDate, endDate } = historicalDateRange(timeframe);
   const variants = providerSymbolVariants(resolved);
   for (const providerSymbol of variants) {
     if (signal?.aborted) throw new DOMException("The request was aborted.", "AbortError");

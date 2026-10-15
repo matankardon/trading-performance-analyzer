@@ -110,6 +110,7 @@ describe("Coaching chat", () => {
   it("shows the gate with 9 trades and enables the composer at 10", async () => {
     const { rerender } = render(<CoachingChat trades={trades(9)} strategyLibrary={[]} />);
     expect(await screen.findByText("Log 10 trades to start coaching (9/10)")).toBeInTheDocument();
+    expect(document.querySelector(".coach-avatar-large")).toHaveAttribute("src");
     expect(screen.getByRole("textbox", { name: "Ask your coach anything about your trading" })).toBeInTheDocument();
 
     rerender(<CoachingChat trades={trades(10)} strategyLibrary={[]} />);

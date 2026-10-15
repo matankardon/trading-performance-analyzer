@@ -4,12 +4,13 @@ import { loadTradeScreenshotSignedUrl } from "./services/tradeScreenshots";
 import { tradeDraftToForm } from "./services/tradeDraftForm";
 import Auth from "./Auth";
 import PrivacyNotice from "./components/PrivacyNotice";
+import BrandLogo from "./components/BrandLogo";
 import TickerBar from "./components/TickerBar";
 import TradeEntryChoiceModal from "./components/TradeEntryChoiceModal";
-import logoMark from "./assets/logo.svg";
 import { dbToTrade, emptyTrade, tradeToDb } from "./models/trade";
 import { INDICATORS, SETUP_CONDITIONS } from "./constants/strategyOptions";
 import { fetchStrategyLibrary } from "./services/strategyLibrary";
+import { tradeAssetSuggestions } from "./services/tradeAssetSuggestions";
 
 const Analytics = lazy(() => import("./components/Analytics"));
 const Coaching = lazy(() => import("./components/CoachingChat"));
@@ -432,20 +433,6 @@ function App() {
     setScreenshotAiExtraction(null);
     setScreenshotAnnotations({});
     setForm(tradeDraftToForm(draft, strategyLibrary, emptyTrade));
-    setShowTradeForm(true);
-  }
-
-  function openStrategyTrade(prefill) {
-    setEditingTrade(null);
-    setScreenshotFile(null);
-    setScreenshotAiExtraction(null);
-    setScreenshotAnnotations({});
-    setForm({
-      ...emptyTrade,
-      date: localDateString(new Date()),
-      ...prefill,
-      indicators: Array.isArray(prefill?.indicators) ? prefill.indicators : [],
-    });
     setShowTradeForm(true);
   }
 
@@ -913,8 +900,6 @@ function App() {
         strategyLibrary={strategyLibrary}
         loadingTrades={loadingTrades}
         onAddTrade={openTradeEntryChoice}
-        onLogTrade={openStrategyTrade}
-        onAskCoach={openCoachWithPrompt}
         onViewTrade={setSelectedTrade}
         selectedAsset={selectedAsset || defaultAsset}
         onAssetChange={setSelectedAsset}
@@ -1409,6 +1394,7 @@ function App() {
                   id="asset"
                   type="text"
                   name="asset"
+                  list="trade-asset-suggestions"
                   placeholder="XAUUSD"
                   value={
                     form.asset
@@ -1418,6 +1404,9 @@ function App() {
                   }
                   required
                 />
+                <datalist id="trade-asset-suggestions">
+                  {tradeAssetSuggestions(trades).map((asset) => <option key={asset} value={asset} />)}
+                </datalist>
               </div>
 
               <div className="form-field">
@@ -1806,28 +1795,27 @@ function App() {
 
   const navigationItems = isDayTrading
     ? [
-      { page: "Overview", label: "Overview", icon: "OV" },
-      { page: "Markets", label: "Market", icon: "MK" },
-      { page: "Chart", label: "Chart", icon: "CH" },
-      { page: "Strategy", label: "Strategy", icon: "SY" },
-      { page: "Strategy Lab", label: "Strategy Lab", icon: "SL" },
-      { page: "Events & News", label: "Events & News", icon: "EV" },
-      { page: "Technicals", label: "Technicals", icon: "TA" },
-      { page: "Trades", label: "Trades", icon: "TR" },
-      { page: "Analytics", label: "Analytics", icon: "AN" },
-      { page: "Coaching", label: "Coaching", icon: "CO" },
-      ]
+        { page: "Overview", label: "Overview", icon: "OV" },
+        { page: "Markets", label: "Market", icon: "MK", category: "MARKETS" },
+        { page: "Chart", label: "Chart", icon: "CH", category: "MARKETS" },
+        { page: "Technicals", label: "Technicals", icon: "TA", category: "MARKETS" },
+        { page: "Events & News", label: "Events & News", icon: "EV", category: "MARKETS" },
+        { page: "Strategy Lab", label: "Strategy Lab", icon: "SL", category: "STRATEGY" },
+        { page: "Trades", label: "Trades", icon: "TR", category: "JOURNAL" },
+        { page: "Analytics", label: "Analytics", icon: "AN", category: "JOURNAL" },
+        { page: "Coaching", label: "Coaching", icon: "CO", category: "AI" },
+        ]
     : [
         { page: "Overview", label: "Overview", icon: "OV" },
-        { page: "Portfolio", label: "Portfolio", icon: "PF" },
-        { page: "Watchlist", label: "Watchlist", icon: "WL" },
-        { page: "Stocks to Research", label: "Stocks to Research", icon: "RQ" },
-        { page: "Opportunities", label: "Opportunities", icon: "OP" },
-        { page: "Analyst Radar", label: "Analyst Radar", icon: "AR" },
-        { page: "Research", label: "Research", icon: "RS" },
-        { page: "Fundamentals", label: "Fundamentals", icon: "FN" },
-        { page: "Valuation", label: "Valuation", icon: "VL" },
-      ];
+        { page: "Portfolio", label: "Portfolio", icon: "PF", category: "PORTFOLIO" },
+        { page: "Watchlist", label: "Watchlist", icon: "WL", category: "PORTFOLIO" },
+        { page: "Stocks to Research", label: "Stocks to Research", icon: "RQ", category: "RESEARCH" },
+        { page: "Opportunities", label: "Opportunities", icon: "OP", category: "RESEARCH" },
+        { page: "Analyst Radar", label: "Analyst Radar", icon: "AR", category: "RESEARCH" },
+        { page: "Research", label: "Research", icon: "RS", category: "RESEARCH" },
+        { page: "Fundamentals", label: "Fundamentals", icon: "FN", category: "RESEARCH" },
+        { page: "Valuation", label: "Valuation", icon: "VL", category: "RESEARCH" },
+        ];
 
   function handleModeChange(mode) {
     setActiveMode(mode);
@@ -1930,20 +1918,25 @@ function App() {
             {showNavigationMenu && (
               <div className="nav-dropdown" role="menu">
                 <p className="nav-dropdown-label">{isDayTrading ? "DAY TRADING" : "INVESTING"}</p>
-                {navigationItems.map((item) => (
-                  <button
-                    type="button"
-                    role="menuitem"
-                    key={item.page}
-                    className={`nav-dropdown-item ${activePage === item.page ? "active" : ""}`}
-                    onClick={() => {
-                      setActivePage(item.page);
-                      setShowNavigationMenu(false);
-                    }}
-                  >
-                    <span className="nav-icon" aria-hidden="true">{item.icon}</span>
-                    <span>{item.label}</span>
-                  </button>
+                {navigationItems.map((item, index) => (
+                  <div key={item.page}>
+                    {item.category && item.category !== navigationItems[index - 1]?.category && (
+                      <p className="nav-dropdown-category" role="presentation">{item.category}</p>
+                    )}
+                    <button
+                      type="button"
+                      role="menuitem"
+                      className={`nav-dropdown-item ${activePage === item.page ? "active" : ""}`}
+                      aria-current={activePage === item.page ? "page" : undefined}
+                      onClick={() => {
+                        setActivePage(item.page);
+                        setShowNavigationMenu(false);
+                      }}
+                    >
+                      <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+                      <span>{item.label}</span>
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -1956,7 +1949,7 @@ function App() {
         </div>
 
         <div className="logo app-header-brand">
-          <img className="app-header-logo-mark" src={logoMark} alt="" aria-hidden="true" />
+          <BrandLogo className="app-header-logo-mark" />
           <div>
             <h2>Trade Catalyst</h2>
             <p>Trading Performance</p>
@@ -1993,7 +1986,7 @@ function App() {
 
       <Suspense fallback={<LazyViewFallback />}>
         <main className="main-content">
-          {isDayTrading && ["Overview", "Markets", "Strategy", "Chart"].includes(activePage) && renderDashboard(activePage)}
+          {isDayTrading && ["Overview", "Markets", "Chart"].includes(activePage) && renderDashboard(activePage)}
 
           {!isDayTrading && <InvestingWorkspace page={activePage} onAskCoach={openCoachWithPrompt} />}
 
